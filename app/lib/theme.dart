@@ -157,7 +157,7 @@ ThemeData buildMaterialTheme(PaperTheme p) {
       onSurface: p.ink,
       onPrimary: isDark ? p.bg : Colors.white,
     ),
-    textTheme: GoogleFonts.playfairDisplayTextTheme(base.textTheme).apply(
+    textTheme: GoogleFonts.cormorantTextTheme(base.textTheme).apply(
       bodyColor: p.ink,
       displayColor: p.heading,
     ),
@@ -165,9 +165,9 @@ ThemeData buildMaterialTheme(PaperTheme p) {
       backgroundColor: p.appBarBg,
       foregroundColor: p.appBarFg,
       elevation: 0,
-      titleTextStyle: GoogleFonts.playfairDisplay(
+      titleTextStyle: GoogleFonts.cinzelDecorative(
         color: p.appBarFg,
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.5,
       ),

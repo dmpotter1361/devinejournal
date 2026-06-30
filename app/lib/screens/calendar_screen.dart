@@ -99,7 +99,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         foregroundColor: t.appBarFg,
         title: Text(
           'Mood Calendar',
-          style: GoogleFonts.playfairDisplay(color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w600),
+          style: GoogleFonts.cinzelDecorative(color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w600),
         ),
       ),
       body: Column(
@@ -117,7 +117,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
                 Text(
                   DateFormat('MMMM yyyy').format(_month),
-                  style: GoogleFonts.playfairDisplay(
+                  style: GoogleFonts.cinzelDecorative(
                     color: t.appBarFg,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,

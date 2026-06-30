@@ -82,7 +82,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 // ── App name ──────────────────────────────────────────────
                 Text(
                   'DevineJournal',
-                  style: GoogleFonts.playfairDisplay(
+                  style: GoogleFonts.cinzelDecorative(
                     color: _gold,
                     fontSize: 36,
                     fontWeight: FontWeight.w700,
@@ -92,11 +92,12 @@ class _SignInScreenState extends State<SignInScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'your sacred journal',
-                  style: GoogleFonts.playfairDisplay(
+                  style: GoogleFonts.cormorant(
                     color: _lavender,
-                    fontSize: 15,
+                    fontSize: 18,
                     fontStyle: FontStyle.italic,
                     letterSpacing: 0.5,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
 
@@ -139,7 +140,7 @@ class _SignInScreenState extends State<SignInScreen> {
                     children: [
                       Text(
                         'Begin your journey',
-                        style: GoogleFonts.playfairDisplay(
+                        style: GoogleFonts.cinzelDecorative(
                           color: _moonW,
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -192,7 +193,7 @@ class _SignInScreenState extends State<SignInScreen> {
                                 )),
                                 label: Text(
                                   'Continue with Google',
-                                  style: GoogleFonts.playfairDisplay(
+                                  style: GoogleFonts.cinzelDecorative(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 15,
                                   ),

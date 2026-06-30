@@ -166,7 +166,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
         backgroundColor: t.appBarBg,
         title: Text(
           'DevineJournal',
-          style: GoogleFonts.playfairDisplay(
+          style: GoogleFonts.cinzelDecorative(
             color: t.appBarFg,
             fontSize: 20,
             fontWeight: FontWeight.w600,
@@ -265,10 +265,11 @@ class _TimelineScreenState extends State<TimelineScreen> {
                       children: [
                         Text(
                           '$_greeting, $_firstName',
-                          style: GoogleFonts.playfairDisplay(
+                          style: GoogleFonts.cormorant(
                             color: t.heading,
-                            fontSize: 17,
+                            fontSize: 22,
                             fontWeight: FontWeight.w600,
+                            fontStyle: FontStyle.italic,
                           ),
                         ),
                         Text(
@@ -356,10 +357,11 @@ class _TimelineScreenState extends State<TimelineScreen> {
           const SizedBox(height: 20),
           Text(
             'Your journal awaits',
-            style: GoogleFonts.playfairDisplay(
+            style: GoogleFonts.cormorant(
               color: t.heading,
-              fontSize: 22,
+              fontSize: 28,
               fontWeight: FontWeight.w600,
+              fontStyle: FontStyle.italic,
             ),
           ),
           const SizedBox(height: 8),
@@ -427,7 +429,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                   const SizedBox(height: 2),
                   Text(
                     day,
-                    style: GoogleFonts.playfairDisplay(
+                    style: GoogleFonts.cinzelDecorative(
                       color: t.heading,
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
@@ -452,10 +454,10 @@ class _TimelineScreenState extends State<TimelineScreen> {
                         Expanded(
                           child: Text(
                             title.isNotEmpty ? title : 'Untitled',
-                            style: GoogleFonts.playfairDisplay(
+                            style: GoogleFonts.cormorant(
                               color: title.isNotEmpty ? t.heading : t.muted,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
                               fontStyle: title.isEmpty ? FontStyle.italic : FontStyle.normal,
                             ),
                             maxLines: 1,
@@ -544,7 +546,7 @@ class _ThemePicker extends StatelessWidget {
         children: [
           Text(
             'Choose your paper',
-            style: GoogleFonts.playfairDisplay(color: t.heading, fontSize: 18, fontWeight: FontWeight.w600),
+            style: GoogleFonts.cormorant(color: t.heading, fontSize: 22, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic),
           ),
           const SizedBox(height: 16),
           // Row 1: first 3 themes

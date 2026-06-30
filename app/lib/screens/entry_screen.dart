@@ -150,7 +150,7 @@ class _EntryScreenState extends State<EntryScreen> {
         foregroundColor: t.appBarFg,
         title: Text(
           _isEdit ? 'Edit Entry' : 'New Entry',
-          style: GoogleFonts.playfairDisplay(color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w500),
+          style: GoogleFonts.cinzelDecorative(color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w500),
         ),
         actions: [
           if (_isEdit)
@@ -247,11 +247,11 @@ class _EntryScreenState extends State<EntryScreen> {
                   padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
                   child: TextField(
                     controller: _title,
-                    style: GoogleFonts.playfairDisplay(color: t.heading, fontSize: 26, fontWeight: FontWeight.w700),
+                    style: GoogleFonts.cormorant(color: t.heading, fontSize: 30, fontWeight: FontWeight.w700),
                     decoration: InputDecoration(
                       hintText: 'Entry title…',
-                      hintStyle: GoogleFonts.playfairDisplay(
-                        color: t.muted.withValues(alpha: 0.45), fontSize: 26, fontStyle: FontStyle.italic),
+                      hintStyle: GoogleFonts.cormorant(
+                        color: t.muted.withValues(alpha: 0.45), fontSize: 30, fontStyle: FontStyle.italic),
                       border: InputBorder.none,
                     ),
                   ),
@@ -345,11 +345,11 @@ class _EntryScreenState extends State<EntryScreen> {
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
             child: TextField(
               controller: _title,
-              style: GoogleFonts.playfairDisplay(color: t.heading, fontSize: 20, fontWeight: FontWeight.w700),
+              style: GoogleFonts.cormorant(color: t.heading, fontSize: 24, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 hintText: 'Entry title…',
-                hintStyle: GoogleFonts.playfairDisplay(
-                  color: t.muted.withValues(alpha: 0.45), fontSize: 20, fontStyle: FontStyle.italic),
+                hintStyle: GoogleFonts.cormorant(
+                  color: t.muted.withValues(alpha: 0.45), fontSize: 24, fontStyle: FontStyle.italic),
                 border: InputBorder.none,
               ),
             ),
@@ -454,7 +454,7 @@ class _EntryScreenState extends State<EntryScreen> {
         const SizedBox(height: 4),
         Text(
           DateFormat('EEEE, MMMM d').format(now.toLocal()),
-          style: GoogleFonts.playfairDisplay(color: t.heading, fontSize: 14, fontWeight: FontWeight.w600),
+          style: GoogleFonts.cormorant(color: t.heading, fontSize: 16, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic),
         ),
         Text(
           DateFormat('yyyy').format(now.toLocal()),
