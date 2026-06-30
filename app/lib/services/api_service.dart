@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 
@@ -9,7 +10,13 @@ Map<String, String> get _headers => {
   'Authorization': 'Bearer ${AuthService.token}',
 };
 
+Map<String, String> get _authHeader => {
+  'Authorization': 'Bearer ${AuthService.token}',
+};
+
 class ApiService {
+  // ── Entries ──────────────────────────────────────────────────────────────
+
   static Future<List<Map<String, dynamic>>> getEntries() async {
     final res = await http.get(Uri.parse('$apiBase/api/entries'), headers: _headers);
     if (res.statusCode != 200) throw Exception('Failed to load entries');
@@ -74,5 +81,58 @@ class ApiService {
     );
     if (res.statusCode != 200) throw Exception('Failed to update entry');
     return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  // ── Photos ───────────────────────────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> uploadPhoto(
+    String entryId,
+    Uint8List bytes,
+    String filename,
+  ) async {
+    final uri = Uri.parse('$apiBase/api/entries/$entryId/photos');
+    final req = http.MultipartRequest('POST', uri)
+      ..headers.addAll(_authHeader)
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamed = await req.send();
+    if (streamed.statusCode != 201) throw Exception('Failed to upload photo');
+    final body = await streamed.stream.bytesToString();
+    return jsonDecode(body) as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> getPhotos(String entryId) async {
+    final res = await http.get(
+      Uri.parse('$apiBase/api/entries/$entryId/photos'),
+      headers: _headers,
+    );
+    if (res.statusCode != 200) throw Exception('Failed to load photos');
+    return (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  static Future<Map<String, dynamic>> updatePhoto(
+    String photoId, {
+    String? widthPct,
+    String? align,
+    String? caption,
+  }) async {
+    final res = await http.put(
+      Uri.parse('$apiBase/api/photos/$photoId'),
+      headers: _headers,
+      body: jsonEncode({
+        if (widthPct != null) 'width_pct': widthPct,
+        if (align != null) 'align': align,
+        if (caption != null) 'caption': caption,
+      }),
+    );
+    if (res.statusCode != 200) throw Exception('Failed to update photo');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static Future<void> deletePhoto(String photoId) async {
+    final res = await http.delete(
+      Uri.parse('$apiBase/api/photos/$photoId'),
+      headers: _headers,
+    );
+    if (res.statusCode != 204) throw Exception('Failed to delete photo');
   }
 }

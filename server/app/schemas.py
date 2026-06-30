@@ -1,13 +1,29 @@
 from pydantic import BaseModel
 from datetime import datetime
 from uuid import UUID
-from typing import Optional
+from typing import Optional, List
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_name: str
     user_picture: str
+
+class PhotoOut(BaseModel):
+    id: UUID
+    entry_id: UUID
+    data: str
+    width_pct: str = "100"
+    align: str = "center"
+    caption: str = ""
+    sort_order: str = "0"
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class PhotoUpdate(BaseModel):
+    width_pct: Optional[str] = None
+    align: Optional[str] = None
+    caption: Optional[str] = None
 
 class EntryCreate(BaseModel):
     title: str = ""
