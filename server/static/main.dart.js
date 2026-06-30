@@ -26719,13 +26719,13 @@ case 2:j=c
 if(j==null)throw A.h(A.cb("Google sign-in was cancelled."))
 s=3
 return A.B(j.gyF(),$async$jY)
-case 3:q=c.a.a
-if(q==null)throw A.h(A.cb("No ID token returned from Google \u2014 try again or use a different browser."))
+case 3:q=c.a.b
+if(q==null)throw A.h(A.cb("No access token returned from Google \u2014 try again."))
 p=A.eo(a+"/api/auth/google",0,null)
 o=t.N
 n=A.al(["Content-Type","application/json"],o,o)
 s=4
-return A.B(A.aEG(p,B.aH.zv(A.al(["credential",q],o,o),null),n),$async$jY)
+return A.B(A.aEG(p,B.aH.zv(A.al(["access_token",q],o,o),null),n),$async$jY)
 case 4:m=c
 p=m.b
 if(p!==200)throw A.h(A.cb("Server rejected sign-in ("+p+"): "+m.gyH()))

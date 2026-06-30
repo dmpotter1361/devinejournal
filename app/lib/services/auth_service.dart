@@ -27,13 +27,13 @@ class AuthService {
     if (account == null) throw Exception('Google sign-in was cancelled.');
 
     final auth = await account.authentication;
-    final idToken = auth.idToken;
-    if (idToken == null) throw Exception('No ID token returned from Google — try again or use a different browser.');
+    final accessToken = auth.accessToken;
+    if (accessToken == null) throw Exception('No access token returned from Google — try again.');
 
     final res = await http.post(
       Uri.parse('$apiBase/api/auth/google'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'credential': idToken}),
+      body: jsonEncode({'access_token': accessToken}),
     );
 
     if (res.statusCode != 200) {
