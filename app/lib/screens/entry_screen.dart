@@ -36,6 +36,7 @@ class _EntryScreenState extends State<EntryScreen> {
   late final TextEditingController _body;
   late String _mood;
   late List<String> _tags;
+  DateTime? _lockedUntil;
   bool _saving = false;
   bool _dirty  = false;
   bool _showPrompt = false;
@@ -53,6 +54,10 @@ class _EntryScreenState extends State<EntryScreen> {
     _tags = tagsRaw.isNotEmpty
         ? tagsRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
         : [];
+    final lu = widget.entry?['locked_until'] as String?;
+    if (lu != null && lu.isNotEmpty) {
+      _lockedUntil = DateTime.tryParse(lu);
+    }
     _showPrompt = !_isEdit;
     _title.addListener(_mark);
     _body.addListener(_mark);
@@ -88,17 +93,39 @@ class _EntryScreenState extends State<EntryScreen> {
     return t.isEmpty ? 0 : t.split(RegExp(r'\s+')).length;
   }
 
+  Future<void> _pickSealDate() async {
+    final t = ThemeService.current;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _lockedUntil ?? DateTime.now().add(const Duration(days: 30)),
+      firstDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
+      builder: (ctx, child) => Theme(
+        data: ThemeData.dark().copyWith(
+          colorScheme: ColorScheme.dark(primary: t.accent, surface: t.paper),
+          dialogTheme: DialogThemeData(backgroundColor: t.paper),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) setState(() { _lockedUntil = picked; _dirty = true; });
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      final luStr = _lockedUntil?.toUtc().toIso8601String();
       if (_isEdit) {
         await ApiService.updateEntry(
           widget.entry!['id'] as String,
           title: _title.text, body: _body.text, mood: _mood, tags: _tagsString,
+          lockedUntil: luStr,
+          clearLock: _lockedUntil == null && widget.entry?['locked_until'] != null,
         );
       } else {
         await ApiService.createEntry(
           title: _title.text, body: _body.text, mood: _mood, tags: _tagsString,
+          lockedUntil: luStr,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -213,6 +240,10 @@ class _EntryScreenState extends State<EntryScreen> {
 
                 // Tags
                 _panelSection(t, 'Tags', _tagsPanel(t)),
+                const SizedBox(height: 16),
+
+                // Memory Capsule
+                _panelSection(t, 'Memory Capsule', _capsulePanel(t)),
                 const SizedBox(height: 16),
 
                 // Writing prompt
@@ -554,6 +585,68 @@ class _EntryScreenState extends State<EntryScreen> {
         _dirty = true;
         setState(() => _showPrompt = false);
       },
+    );
+  }
+
+  Widget _capsulePanel(dynamic t) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_lockedUntil != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: t.accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: t.accent.withValues(alpha: 0.3), width: 0.6),
+            ),
+            child: Row(
+              children: [
+                const Text('🔒', style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Seals ${DateFormat('MMM d, yyyy').format(_lockedUntil!)}',
+                    style: TextStyle(color: t.accent, fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() { _lockedUntil = null; _dirty = true; }),
+                  child: Icon(Icons.close, size: 13, color: t.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        GestureDetector(
+          onTap: _pickSealDate,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: t.paper,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: t.border, width: 0.7),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 13, color: t.muted),
+                const SizedBox(width: 6),
+                Text(
+                  _lockedUntil == null ? 'Seal until a date…' : 'Change date',
+                  style: TextStyle(color: t.muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Entry stays sealed until that date.',
+          style: TextStyle(color: t.muted.withValues(alpha: 0.6), fontSize: 10),
+        ),
+      ],
     );
   }
 

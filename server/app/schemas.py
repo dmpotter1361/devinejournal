@@ -14,12 +14,14 @@ class EntryCreate(BaseModel):
     body: str = ""
     mood: str = ""
     tags: str = ""
+    locked_until: Optional[str] = None
 
 class EntryUpdate(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     mood: Optional[str] = None
     tags: Optional[str] = None
+    locked_until: Optional[str] = None
 
 class EntryOut(BaseModel):
     id: UUID
@@ -27,6 +29,7 @@ class EntryOut(BaseModel):
     body: str
     mood: str
     tags: str = ""
+    locked_until: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

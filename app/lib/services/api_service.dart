@@ -21,11 +21,18 @@ class ApiService {
     required String body,
     required String mood,
     String tags = '',
+    String? lockedUntil,
   }) async {
     final res = await http.post(
       Uri.parse('$apiBase/api/entries'),
       headers: _headers,
-      body: jsonEncode({'title': title, 'body': body, 'mood': mood, 'tags': tags}),
+      body: jsonEncode({
+        'title': title,
+        'body': body,
+        'mood': mood,
+        'tags': tags,
+        if (lockedUntil != null) 'locked_until': lockedUntil,
+      }),
     );
     if (res.statusCode != 201) throw Exception('Failed to create entry');
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -42,6 +49,8 @@ class ApiService {
     String? body,
     String? mood,
     String? tags,
+    String? lockedUntil,
+    bool clearLock = false,
   }) async {
     final res = await http.put(
       Uri.parse('$apiBase/api/entries/$id'),
@@ -51,6 +60,8 @@ class ApiService {
         if (body != null) 'body': body,
         if (mood != null) 'mood': mood,
         if (tags != null) 'tags': tags,
+        if (lockedUntil != null) 'locked_until': lockedUntil,
+        if (clearLock) 'locked_until': null,
       }),
     );
     if (res.statusCode != 200) throw Exception('Failed to update entry');
