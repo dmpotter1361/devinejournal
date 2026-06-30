@@ -13,17 +13,20 @@ class EntryCreate(BaseModel):
     title: str = ""
     body: str = ""
     mood: str = ""
+    tags: str = ""
 
 class EntryUpdate(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     mood: Optional[str] = None
+    tags: Optional[str] = None
 
 class EntryOut(BaseModel):
     id: UUID
     title: str
     body: str
     mood: str
+    tags: str = ""
     created_at: datetime
     updated_at: datetime
 

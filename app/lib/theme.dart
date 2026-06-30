@@ -95,10 +95,48 @@ const paperThemeMoonlit = PaperTheme(
   brightness: Brightness.light,
 );
 
+const paperThemeDawn = PaperTheme(
+  id: 'dawn',
+  name: 'Dawn',
+  dot: Color(0xFFe87a8c),
+  bg: Color(0xFFf9edf1),
+  paper: Color(0xFFfdf5f7),
+  card: Color(0xFFf5dfe8),
+  ink: Color(0xFF3a1a26),
+  heading: Color(0xFFb5385a),
+  accent: Color(0xFFd45c7a),
+  muted: Color(0xFFb890a0),
+  border: Color(0xFFe8c0cc),
+  lines: Color(0xFFf0d5de),
+  appBarBg: Color(0xFFc45070),
+  appBarFg: Color(0xFFfdf5f7),
+  brightness: Brightness.light,
+);
+
+const paperThemeForest = PaperTheme(
+  id: 'forest',
+  name: 'Forest',
+  dot: Color(0xFF5aaa6e),
+  bg: Color(0xFF0d1a0f),
+  paper: Color(0xFF141f16),
+  card: Color(0xFF1a2a1c),
+  ink: Color(0xFFd0f0d8),
+  heading: Color(0xFF7dcc90),
+  accent: Color(0xFF5aaa6e),
+  muted: Color(0xFF5a8064),
+  border: Color(0xFF243828),
+  lines: Color(0xFF1e2e20),
+  appBarBg: Color(0xFF0d1a0f),
+  appBarFg: Color(0xFF7dcc90),
+  brightness: Brightness.dark,
+);
+
 const List<PaperTheme> allPaperThemes = [
   paperThemeMidnight,
   paperThemeParchment,
   paperThemeMoonlit,
+  paperThemeDawn,
+  paperThemeForest,
 ];
 
 PaperTheme paperThemeById(String id) =>

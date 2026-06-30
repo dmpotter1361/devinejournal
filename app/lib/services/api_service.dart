@@ -20,11 +20,12 @@ class ApiService {
     required String title,
     required String body,
     required String mood,
+    String tags = '',
   }) async {
     final res = await http.post(
       Uri.parse('$apiBase/api/entries'),
       headers: _headers,
-      body: jsonEncode({'title': title, 'body': body, 'mood': mood}),
+      body: jsonEncode({'title': title, 'body': body, 'mood': mood, 'tags': tags}),
     );
     if (res.statusCode != 201) throw Exception('Failed to create entry');
     return jsonDecode(res.body) as Map<String, dynamic>;
@@ -40,6 +41,7 @@ class ApiService {
     String? title,
     String? body,
     String? mood,
+    String? tags,
   }) async {
     final res = await http.put(
       Uri.parse('$apiBase/api/entries/$id'),
@@ -48,6 +50,7 @@ class ApiService {
         if (title != null) 'title': title,
         if (body != null) 'body': body,
         if (mood != null) 'mood': mood,
+        if (tags != null) 'tags': tags,
       }),
     );
     if (res.statusCode != 200) throw Exception('Failed to update entry');
