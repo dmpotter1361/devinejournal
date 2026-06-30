@@ -11,11 +11,13 @@ import '../utils/affirmations.dart';
 import '../utils/entry_templates.dart';
 import '../utils/pdf_export.dart';
 import '../widgets/star_field.dart';
+import '../services/passcode_service.dart';
 import 'entry_screen.dart';
 import 'calendar_screen.dart';
 import 'garden_screen.dart';
 import 'gratitude_screen.dart';
 import 'review_screen.dart';
+import 'security_settings_screen.dart';
 
 const _moodColors = {
   '✨': Color(0xFFf8df6e),
@@ -40,7 +42,8 @@ const _moodColors = {
 class TimelineScreen extends StatefulWidget {
   final VoidCallback onSignOut;
   final VoidCallback onThemeChange;
-  const TimelineScreen({super.key, required this.onSignOut, required this.onThemeChange});
+  final VoidCallback onLockRequested;
+  const TimelineScreen({super.key, required this.onSignOut, required this.onThemeChange, required this.onLockRequested});
 
   @override
   State<TimelineScreen> createState() => _TimelineScreenState();
@@ -192,6 +195,13 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
 
   Future<void> _exportPdf() async {
     await exportJournalPdf(_entries);
+  }
+
+  Future<void> _openSecurity() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SecuritySettingsScreen()),
+    );
+    if (mounted) setState(() {});
   }
 
   Future<void> _openCalendar() async {
@@ -473,6 +483,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
               tooltip: 'Mood calendar',
               onPressed: _loading ? null : _openCalendar,
             ),
+            if (PasscodeService.hasPasscode)
+              IconButton(
+                icon: Icon(Icons.lock_outline_rounded, color: t.appBarFg, size: 20),
+                tooltip: 'Lock journal',
+                onPressed: widget.onLockRequested,
+              ),
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert, color: t.appBarFg, size: 20),
               color: t.card,
@@ -480,6 +496,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                 if (v == 'garden') _openGarden();
                 if (v == 'review') _openYearInReview();
                 if (v == 'pdf') _exportPdf();
+                if (v == 'security') _openSecurity();
               },
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'garden',
@@ -499,6 +516,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                       const Text('📄', style: TextStyle(fontSize: 16)),
                       const SizedBox(width: 10),
                       Text('Export PDF', style: TextStyle(color: t.ink)),
+                    ])),
+                PopupMenuItem(value: 'security',
+                    child: Row(children: [
+                      const Text('🔒', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 10),
+                      Text('Security', style: TextStyle(color: t.ink)),
                     ])),
               ],
             ),
