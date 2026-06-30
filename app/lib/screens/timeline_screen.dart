@@ -8,10 +8,14 @@ import '../theme.dart';
 import '../utils/moon_phase.dart';
 import '../utils/journal_stats.dart';
 import '../utils/affirmations.dart';
+import '../utils/entry_templates.dart';
+import '../utils/pdf_export.dart';
 import '../widgets/star_field.dart';
 import 'entry_screen.dart';
 import 'calendar_screen.dart';
+import 'garden_screen.dart';
 import 'gratitude_screen.dart';
+import 'review_screen.dart';
 
 const _moodColors = {
   '✨': Color(0xFFf8df6e),
@@ -140,8 +144,11 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
 
   Future<void> _newEntry() async {
     _closeFab();
+    final tpl = await pickEntryTemplate(context, theme: ThemeService.current);
+    if (tpl == null) return;
+    if (!mounted) return;
     final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const EntryScreen()),
+      MaterialPageRoute(builder: (_) => EntryScreen(template: tpl)),
     );
     if (created == true) _load();
   }
@@ -164,6 +171,27 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
       MaterialPageRoute(builder: (_) => EntryScreen(entry: entry)),
     );
     if (changed == true) _load();
+  }
+
+  Future<void> _openGarden() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GardenScreen(entries: _entries)),
+    );
+  }
+
+  Future<void> _openYearInReview() async {
+    final year = DateTime.now().year;
+    final yearEntries = _entries.where((e) {
+      final dt = DateTime.tryParse(e['created_at'] as String? ?? '');
+      return dt != null && dt.toLocal().year == year;
+    }).toList();
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ReviewScreen(entries: yearEntries)),
+    );
+  }
+
+  Future<void> _exportPdf() async {
+    await exportJournalPdf(_entries);
   }
 
   Future<void> _openCalendar() async {
@@ -444,6 +472,35 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
               icon: Icon(Icons.calendar_month_outlined, color: t.appBarFg, size: 20),
               tooltip: 'Mood calendar',
               onPressed: _loading ? null : _openCalendar,
+            ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: t.appBarFg, size: 20),
+              color: t.card,
+              onSelected: (v) {
+                if (v == 'garden') _openGarden();
+                if (v == 'review') _openYearInReview();
+                if (v == 'pdf') _exportPdf();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'garden',
+                    child: Row(children: [
+                      const Text('🌷', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 10),
+                      Text('Gratitude Garden', style: TextStyle(color: t.ink)),
+                    ])),
+                PopupMenuItem(value: 'review',
+                    child: Row(children: [
+                      const Text('📊', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 10),
+                      Text('Year in Review', style: TextStyle(color: t.ink)),
+                    ])),
+                PopupMenuItem(value: 'pdf',
+                    child: Row(children: [
+                      const Text('📄', style: TextStyle(fontSize: 16)),
+                      const SizedBox(width: 10),
+                      Text('Export PDF', style: TextStyle(color: t.ink)),
+                    ])),
+              ],
             ),
             InkWell(
               onTap: _pickTheme,

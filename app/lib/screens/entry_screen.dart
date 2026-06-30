@@ -1,14 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/api_service.dart';
 import '../services/theme_service.dart';
+import '../theme.dart';
 import '../utils/moon_phase.dart';
+import '../utils/entry_templates.dart';
+import '../utils/web_audio_recorder.dart';
 import '../widgets/ruled_paper.dart';
 import '../widgets/writing_prompt.dart';
+import '../widgets/voice_memo_player.dart';
 
 const _moods = [
   '', '✨', '🌙', '🌸', '🔥', '💫', '🌿', '🖤', '💜',
@@ -37,7 +43,8 @@ const _moodColors = {
 
 class EntryScreen extends StatefulWidget {
   final Map<String, dynamic>? entry;
-  const EntryScreen({super.key, this.entry});
+  final EntryTemplate? template;
+  const EntryScreen({super.key, this.entry, this.template});
 
   @override
   State<EntryScreen> createState() => _EntryScreenState();
@@ -54,7 +61,11 @@ class _EntryScreenState extends State<EntryScreen> {
   bool _saving = false;
   bool _dirty  = false;
   bool _showPrompt = false;
+  bool _previewMode = false;
   final _tagController = TextEditingController();
+
+  // Per-entry theme override (null/empty = use global theme)
+  String? _themeId;
 
   // Entry ID (null until first save for new entries)
   String? _entryId;
@@ -64,15 +75,27 @@ class _EntryScreenState extends State<EntryScreen> {
   List<TextEditingController> _captionControllers = [];
   bool _uploading = false;
 
+  // Voice memos
+  List<Map<String, dynamic>> _voiceMemos = [];
+  final _recorder = WebAudioRecorder();
+  bool _recording = false;
+  bool _memoUploading = false;
+  Duration _recordElapsed = Duration.zero;
+  Timer? _recordTimer;
+
   bool get _isEdit => _entryId != null;
+
+  PaperTheme get _t =>
+      (_themeId != null && _themeId!.isNotEmpty) ? paperThemeById(_themeId!) : ThemeService.current;
 
   @override
   void initState() {
     super.initState();
     _entryId = widget.entry?['id'] as String?;
-    _title = TextEditingController(text: widget.entry?['title'] ?? '');
-    _body  = TextEditingController(text: widget.entry?['body'] ?? '');
-    _mood  = widget.entry?['mood'] ?? '';
+    final tpl = widget.entry == null ? widget.template : null;
+    _title = TextEditingController(text: widget.entry?['title'] ?? tpl?.title ?? '');
+    _body  = TextEditingController(text: widget.entry?['body'] ?? tpl?.body ?? '');
+    _mood  = widget.entry?['mood'] ?? tpl?.mood ?? '';
     final tagsRaw = widget.entry?['tags'] as String? ?? '';
     _tags = tagsRaw.isNotEmpty
         ? tagsRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
@@ -83,11 +106,15 @@ class _EntryScreenState extends State<EntryScreen> {
     }
     _paperStyle = widget.entry?['paper_style'] as String? ?? 'lined';
     _isFavorite = widget.entry?['is_favorite'] as bool? ?? false;
-    _showPrompt = _entryId == null;
+    _themeId    = widget.entry?['theme_id'] as String?;
+    _showPrompt = _entryId == null && tpl == null;
     _title.addListener(_mark);
     _body.addListener(_mark);
     if (_entryId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadPhotos());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadPhotos();
+        _loadVoiceMemos();
+      });
     }
   }
 
@@ -98,7 +125,9 @@ class _EntryScreenState extends State<EntryScreen> {
     _title.dispose();
     _body.dispose();
     _tagController.dispose();
-    for (final c in _captionControllers) c.dispose();
+    for (final c in _captionControllers) { c.dispose(); }
+    _recordTimer?.cancel();
+    if (_recording) _recorder.cancel();
     super.dispose();
   }
 
@@ -170,6 +199,7 @@ class _EntryScreenState extends State<EntryScreen> {
         lockedUntil: _lockedUntil?.toUtc().toIso8601String(),
         paperStyle: _paperStyle,
         isFavorite: _isFavorite,
+        themeId: _themeId ?? '',
       );
       if (mounted) setState(() { _entryId = created['id'] as String; _dirty = false; });
       return true;
@@ -256,10 +286,104 @@ class _EntryScreenState extends State<EntryScreen> {
     } catch (_) {}
   }
 
+  // ── Voice memo helpers ──────────────────────────────────────────────────────
+
+  Future<void> _loadVoiceMemos() async {
+    if (_entryId == null) return;
+    try {
+      final memos = await ApiService.getVoiceMemos(_entryId!);
+      if (mounted) setState(() => _voiceMemos = memos);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_recording) {
+      _recordTimer?.cancel();
+      setState(() { _recording = false; _memoUploading = true; });
+      try {
+        final rec = await _recorder.stop();
+        if (!await _ensureSaved()) {
+          setState(() => _memoUploading = false);
+          return;
+        }
+        final ext = rec.mime.contains('ogg') ? 'ogg' : 'webm';
+        final memo = await ApiService.uploadVoiceMemo(
+            _entryId!, rec.bytes, 'memo.$ext', rec.durationMs);
+        if (mounted) setState(() => _voiceMemos.add(memo));
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Recording failed: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _memoUploading = false);
+      }
+    } else {
+      try {
+        await _recorder.start();
+        setState(() { _recording = true; _recordElapsed = Duration.zero; });
+        _recordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (!mounted) return;
+          setState(() => _recordElapsed += const Duration(seconds: 1));
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Microphone unavailable: $e'), backgroundColor: Colors.redAccent),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _deleteVoiceMemo(String memoId, int idx) async {
+    try {
+      await ApiService.deleteVoiceMemo(memoId);
+      if (mounted) setState(() => _voiceMemos.removeAt(idx));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+  }
+
+  // ── Markdown formatting helpers ────────────────────────────────────────────
+
+  void _wrapSelection(String before, String after) {
+    final sel = _body.selection;
+    if (!sel.isValid) return;
+    final text = _body.text;
+    final start = sel.start < 0 ? text.length : sel.start;
+    final end = sel.end < 0 ? text.length : sel.end;
+    final selected = text.substring(start, end);
+    final newText = text.replaceRange(start, end, '$before$selected$after');
+    _body.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + before.length + selected.length + after.length),
+    );
+    _dirty = true;
+  }
+
+  void _insertLinePrefix(String prefix) {
+    final sel = _body.selection;
+    final text = _body.text;
+    final cursor = sel.start < 0 ? text.length : sel.start;
+    final lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
+    final newText = text.substring(0, lineStart) + prefix + text.substring(lineStart);
+    _body.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursor + prefix.length),
+    );
+    _dirty = true;
+  }
+
   // ── Save / Delete ──────────────────────────────────────────────────────────
 
   Future<void> _pickSealDate() async {
-    final t = ThemeService.current;
+    final t = _t;
     final picked = await showDatePicker(
       context: context,
       initialDate: _lockedUntil ?? DateTime.now().add(const Duration(days: 30)),
@@ -297,6 +421,7 @@ class _EntryScreenState extends State<EntryScreen> {
           clearLock: _lockedUntil == null && (widget.entry?['locked_until'] as String?)?.isNotEmpty == true,
           paperStyle: _paperStyle,
           isFavorite: _isFavorite,
+          themeId: _themeId ?? '',
         );
       } else {
         final created = await ApiService.createEntry(
@@ -304,6 +429,7 @@ class _EntryScreenState extends State<EntryScreen> {
           lockedUntil: luStr,
           paperStyle: _paperStyle,
           isFavorite: _isFavorite,
+          themeId: _themeId ?? '',
         );
         _entryId = created['id'] as String;
       }
@@ -320,7 +446,7 @@ class _EntryScreenState extends State<EntryScreen> {
   }
 
   Future<void> _delete() async {
-    final t = ThemeService.current;
+    final t = _t;
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -352,7 +478,7 @@ class _EntryScreenState extends State<EntryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final t = ThemeService.current;
+    final t = _t;
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(
@@ -425,6 +551,8 @@ class _EntryScreenState extends State<EntryScreen> {
                 const SizedBox(height: 16),
                 _panelSection(t, 'Paper', _paperStylePanel(t)),
                 const SizedBox(height: 16),
+                _panelSection(t, 'Theme', _themePanel(t)),
+                const SizedBox(height: 16),
                 _panelSection(t, 'Tags', _tagsPanel(t)),
                 const SizedBox(height: 16),
                 _panelSection(t, 'Memory Capsule', _capsulePanel(t)),
@@ -487,37 +615,63 @@ class _EntryScreenState extends State<EntryScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                TextField(
-                                  controller: _body,
-                                  maxLines: null,
-                                  textAlignVertical: TextAlignVertical.top,
-                                  style: GoogleFonts.lora(
-                                      color: t.ink, fontSize: 18, height: 1.95),
-                                  decoration: InputDecoration(
-                                    hintText: 'Write your thoughts…',
-                                    hintStyle: GoogleFonts.lora(
-                                        color: t.muted.withValues(alpha: 0.38),
-                                        fontSize: 18,
-                                        fontStyle: FontStyle.italic),
-                                    border: InputBorder.none,
+                                _markdownToolbar(t),
+                                const SizedBox(height: 6),
+                                if (_previewMode)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    child: MarkdownBody(
+                                      data: _body.text.isEmpty ? '*Nothing written yet…*' : _body.text,
+                                      styleSheet: MarkdownStyleSheet(
+                                        p: GoogleFonts.lora(color: t.ink, fontSize: 18, height: 1.95),
+                                        h1: GoogleFonts.cormorant(
+                                            color: t.heading, fontSize: 26, fontWeight: FontWeight.w700),
+                                        listBullet: GoogleFonts.lora(color: t.ink, fontSize: 18),
+                                        strong: GoogleFonts.lora(color: t.ink, fontWeight: FontWeight.w800),
+                                        em: GoogleFonts.lora(color: t.ink, fontStyle: FontStyle.italic),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  TextField(
+                                    controller: _body,
+                                    maxLines: null,
+                                    textAlignVertical: TextAlignVertical.top,
+                                    style: GoogleFonts.lora(
+                                        color: t.ink, fontSize: 18, height: 1.95),
+                                    decoration: InputDecoration(
+                                      hintText: 'Write your thoughts…',
+                                      hintStyle: GoogleFonts.lora(
+                                          color: t.muted.withValues(alpha: 0.38),
+                                          fontSize: 18,
+                                          fontStyle: FontStyle.italic),
+                                      border: InputBorder.none,
+                                    ),
                                   ),
-                                ),
                                 if (_photos.isNotEmpty) ...[
                                   const SizedBox(height: 16),
                                   Divider(color: t.lines, thickness: 0.8),
                                   ..._photos.asMap().entries.map(
                                     (e) => _photoItem(e.value, t, e.key)),
                                 ],
+                                _voiceMemosSection(t),
                               ],
                             ),
                           ),
                         ),
                       ),
-                      // Add photo button
+                      // Add photo / mic buttons
                       Positioned(
                         bottom: 14,
                         right: 16,
-                        child: _addPhotoButton(t),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _micButton(t),
+                            const SizedBox(width: 10),
+                            _addPhotoButton(t),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -628,37 +782,63 @@ class _EntryScreenState extends State<EntryScreen> {
                                 setState(() => _showPrompt = false);
                               },
                             ),
-                          TextField(
-                            controller: _body,
-                            maxLines: null,
-                            textAlignVertical: TextAlignVertical.top,
-                            style: GoogleFonts.lora(
-                                color: t.ink, fontSize: 17, height: 1.95),
-                            decoration: InputDecoration(
-                              hintText: 'Write your thoughts…',
-                              hintStyle: GoogleFonts.lora(
-                                  color: t.muted.withValues(alpha: 0.38),
-                                  fontSize: 17,
-                                  fontStyle: FontStyle.italic),
-                              border: InputBorder.none,
+                          _markdownToolbar(t),
+                          const SizedBox(height: 6),
+                          if (_previewMode)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: MarkdownBody(
+                                data: _body.text.isEmpty ? '*Nothing written yet…*' : _body.text,
+                                styleSheet: MarkdownStyleSheet(
+                                  p: GoogleFonts.lora(color: t.ink, fontSize: 17, height: 1.95),
+                                  h1: GoogleFonts.cormorant(
+                                      color: t.heading, fontSize: 24, fontWeight: FontWeight.w700),
+                                  listBullet: GoogleFonts.lora(color: t.ink, fontSize: 17),
+                                  strong: GoogleFonts.lora(color: t.ink, fontWeight: FontWeight.w800),
+                                  em: GoogleFonts.lora(color: t.ink, fontStyle: FontStyle.italic),
+                                ),
+                              ),
+                            )
+                          else
+                            TextField(
+                              controller: _body,
+                              maxLines: null,
+                              textAlignVertical: TextAlignVertical.top,
+                              style: GoogleFonts.lora(
+                                  color: t.ink, fontSize: 17, height: 1.95),
+                              decoration: InputDecoration(
+                                hintText: 'Write your thoughts…',
+                                hintStyle: GoogleFonts.lora(
+                                    color: t.muted.withValues(alpha: 0.38),
+                                    fontSize: 17,
+                                    fontStyle: FontStyle.italic),
+                                border: InputBorder.none,
+                              ),
                             ),
-                          ),
                           if (_photos.isNotEmpty) ...[
                             const SizedBox(height: 16),
                             Divider(color: t.lines, thickness: 0.8),
                             ..._photos.asMap().entries.map(
                               (e) => _photoItem(e.value, t, e.key)),
                           ],
+                          _voiceMemosSection(t),
                         ],
                       ),
                     ),
                   ),
                 ),
-                // Add photo button
+                // Add photo / mic buttons
                 Positioned(
                   bottom: 14,
                   right: 12,
-                  child: _addPhotoButton(t),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _micButton(t),
+                      const SizedBox(width: 8),
+                      _addPhotoButton(t),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -722,6 +902,132 @@ class _EntryScreenState extends State<EntryScreen> {
               style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
         ]),
       ),
+    );
+  }
+
+  Widget _micButton(dynamic t) {
+    if (_memoUploading) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: t.accent,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: const SizedBox(
+          width: 16, height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+        ),
+      );
+    }
+    if (_recording) {
+      final m = _recordElapsed.inMinutes;
+      final s = _recordElapsed.inSeconds % 60;
+      return GestureDetector(
+        onTap: _toggleRecording,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: Colors.redAccent,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.stop_rounded, size: 16, color: Colors.white),
+            const SizedBox(width: 6),
+            Text('$m:${s.toString().padLeft(2, '0')}',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
+    }
+    return GestureDetector(
+      onTap: _toggleRecording,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: t.accent,
+          shape: BoxShape.circle,
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: const Icon(Icons.mic_rounded, size: 16, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _markdownToolbar(dynamic t) {
+    Widget btn(IconData icon, VoidCallback onTap, {String? tooltip}) {
+      return Tooltip(
+        message: tooltip ?? '',
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: t.border, width: 0.6),
+            ),
+            child: Icon(icon, size: 14, color: t.muted),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          btn(Icons.format_bold_rounded, () => _wrapSelection('**', '**'), tooltip: 'Bold'),
+          btn(Icons.format_italic_rounded, () => _wrapSelection('*', '*'), tooltip: 'Italic'),
+          btn(Icons.title_rounded, () => _insertLinePrefix('# '), tooltip: 'Heading'),
+          btn(Icons.format_list_bulleted_rounded, () => _insertLinePrefix('- '), tooltip: 'Bullet'),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () => setState(() => _previewMode = !_previewMode),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: _previewMode ? t.accent.withValues(alpha: 0.15) : t.card,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                    color: _previewMode ? t.accent : t.border, width: _previewMode ? 1.2 : 0.6),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(_previewMode ? Icons.edit_rounded : Icons.visibility_rounded,
+                    size: 13, color: _previewMode ? t.accent : t.muted),
+                const SizedBox(width: 4),
+                Text(_previewMode ? 'Edit' : 'Preview',
+                    style: TextStyle(
+                        color: _previewMode ? t.accent : t.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _voiceMemosSection(dynamic t) {
+    if (_voiceMemos.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Text('VOICE MEMOS',
+            style: TextStyle(
+                color: t.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        const SizedBox(height: 8),
+        ..._voiceMemos.asMap().entries.map((e) => VoiceMemoPlayer(
+              dataUrl: e.value['data'] as String,
+              durationMs: int.tryParse('${e.value['duration_ms']}') ?? 0,
+              theme: t,
+              onDelete: () => _deleteVoiceMemo(e.value['id'] as String, e.key),
+            )),
+      ],
     );
   }
 
@@ -977,6 +1283,51 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
+  Widget _themePanel(dynamic t) {
+    return Wrap(
+      spacing: 8, runSpacing: 8,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() { _themeId = ''; _dirty = true; }),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: (_themeId == null || _themeId!.isEmpty)
+                  ? t.accent.withValues(alpha: 0.15) : t.paper,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: (_themeId == null || _themeId!.isEmpty) ? t.accent : t.border,
+                  width: (_themeId == null || _themeId!.isEmpty) ? 1.2 : 0.6),
+            ),
+            child: Text('Auto',
+                style: TextStyle(
+                    color: (_themeId == null || _themeId!.isEmpty) ? t.accent : t.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+        ...allPaperThemes.map((pt) {
+          final sel = _themeId == pt.id;
+          return GestureDetector(
+            onTap: () => setState(() { _themeId = pt.id; _dirty = true; }),
+            child: Container(
+              width: 26, height: 26,
+              decoration: BoxDecoration(
+                color: pt.dot,
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: sel ? t.accent : Colors.transparent, width: 2.4),
+              ),
+              child: sel
+                  ? const Icon(Icons.check, size: 13, color: Colors.white)
+                  : null,
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   Widget _tagsPanel(dynamic t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1107,6 +1458,10 @@ class _EntryScreenState extends State<EntryScreen> {
         if (_photos.isNotEmpty) ...[
           const SizedBox(height: 4),
           _statRow(t, 'Images', '${_photos.length}'),
+        ],
+        if (_voiceMemos.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _statRow(t, 'Voice memos', '${_voiceMemos.length}'),
         ],
       ],
     );

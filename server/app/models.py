@@ -23,6 +23,7 @@ class Entry(Base):
     locked_until = Column(Text, nullable=True)
     paper_style  = Column(Text, nullable=False, server_default='lined', default='lined')
     is_favorite  = Column(Boolean, nullable=False, server_default='false', default=False)
+    theme_id     = Column(String, nullable=True)        # per-entry theme override (null = global)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -37,3 +38,14 @@ class Photo(Base):
     caption    = Column(String, default="")
     sort_order = Column(String, default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class VoiceMemo(Base):
+    __tablename__ = "voice_memos"
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entry_id    = Column(UUID(as_uuid=True), ForeignKey("entries.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id",   ondelete="CASCADE"), nullable=False, index=True)
+    data        = Column(Text, nullable=False)          # base64 data URL (webm/ogg audio)
+    duration_ms = Column(String, default="0")
+    transcript  = Column(Text, default="")
+    sort_order  = Column(String, default="0")
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())

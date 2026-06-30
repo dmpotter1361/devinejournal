@@ -25,6 +25,19 @@ class PhotoUpdate(BaseModel):
     align: Optional[str] = None
     caption: Optional[str] = None
 
+class VoiceMemoOut(BaseModel):
+    id: UUID
+    entry_id: UUID
+    data: str
+    duration_ms: str = "0"
+    transcript: str = ""
+    sort_order: str = "0"
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class VoiceMemoUpdate(BaseModel):
+    transcript: Optional[str] = None
+
 class EntryCreate(BaseModel):
     title: str = ""
     body: str = ""
@@ -33,6 +46,7 @@ class EntryCreate(BaseModel):
     locked_until: Optional[str] = None
     paper_style: str = "lined"
     is_favorite: bool = False
+    theme_id: Optional[str] = None
 
 class EntryUpdate(BaseModel):
     title: Optional[str] = None
@@ -42,6 +56,7 @@ class EntryUpdate(BaseModel):
     locked_until: Optional[str] = None
     paper_style: Optional[str] = None
     is_favorite: Optional[bool] = None
+    theme_id: Optional[str] = None
 
 class EntryOut(BaseModel):
     id: UUID
@@ -52,6 +67,7 @@ class EntryOut(BaseModel):
     locked_until: Optional[str] = None
     paper_style: str = "lined"
     is_favorite: bool = False
+    theme_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
