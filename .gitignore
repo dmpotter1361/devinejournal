@@ -1,0 +1,28 @@
+# secrets
+server/.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Flutter
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+
+# Flutter web build output (checked in to server/static after build)
+# app/build/ already covered above
+
+# Editor
+.idea/
+.vscode/settings.json
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

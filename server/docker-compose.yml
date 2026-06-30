@@ -1,0 +1,29 @@
+services:
+  devinejournal-api:
+    build: .
+    container_name: devinejournal-api
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - devinejournal-db
+    networks:
+      - proxy
+      - internal
+
+  devinejournal-db:
+    image: postgres:16-alpine
+    container_name: devinejournal-db
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - devinejournal-db:/var/lib/postgresql/data
+    networks:
+      - internal
+
+volumes:
+  devinejournal-db:
+
+networks:
+  proxy:
+    external: true
+  internal:
