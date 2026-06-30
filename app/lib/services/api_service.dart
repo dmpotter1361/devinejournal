@@ -22,6 +22,8 @@ class ApiService {
     required String mood,
     String tags = '',
     String? lockedUntil,
+    String paperStyle = 'lined',
+    bool isFavorite = false,
   }) async {
     final res = await http.post(
       Uri.parse('$apiBase/api/entries'),
@@ -32,6 +34,8 @@ class ApiService {
         'mood': mood,
         'tags': tags,
         if (lockedUntil != null) 'locked_until': lockedUntil,
+        'paper_style': paperStyle,
+        'is_favorite': isFavorite,
       }),
     );
     if (res.statusCode != 201) throw Exception('Failed to create entry');
@@ -51,6 +55,8 @@ class ApiService {
     String? tags,
     String? lockedUntil,
     bool clearLock = false,
+    String? paperStyle,
+    bool? isFavorite,
   }) async {
     final res = await http.put(
       Uri.parse('$apiBase/api/entries/$id'),
@@ -62,6 +68,8 @@ class ApiService {
         if (tags != null) 'tags': tags,
         if (lockedUntil != null) 'locked_until': lockedUntil,
         if (clearLock) 'locked_until': null,
+        if (paperStyle != null) 'paper_style': paperStyle,
+        if (isFavorite != null) 'is_favorite': isFavorite,
       }),
     );
     if (res.statusCode != 200) throw Exception('Failed to update entry');

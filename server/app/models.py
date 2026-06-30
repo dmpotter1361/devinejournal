@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, func
+from sqlalchemy import Column, String, DateTime, Text, Boolean, ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
 from .database import Base
 
@@ -21,5 +21,7 @@ class Entry(Base):
     mood       = Column(String, default="")
     tags         = Column(Text, default="")
     locked_until = Column(Text, nullable=True)
+    paper_style  = Column(Text, nullable=False, server_default='lined', default='lined')
+    is_favorite  = Column(Boolean, nullable=False, server_default='false', default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

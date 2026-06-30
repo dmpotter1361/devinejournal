@@ -7,7 +7,10 @@ import '../utils/moon_phase.dart';
 import '../widgets/ruled_paper.dart';
 import '../widgets/writing_prompt.dart';
 
-const _moods = ['', '✨', '🌙', '🌸', '🔥', '💫', '🌿', '🖤', '💜', '🌊', '⚡', '🌻'];
+const _moods = [
+  '', '✨', '🌙', '🌸', '🔥', '💫', '🌿', '🖤', '💜',
+  '🌊', '⚡', '🌻', '🦋', '🌹', '💝', '🌺', '🌼', '🌠',
+];
 
 const _moodColors = {
   '✨': Color(0xFFf8df6e),
@@ -21,6 +24,12 @@ const _moodColors = {
   '🌊': Color(0xFF4dd0e1),
   '⚡': Color(0xFFffee58),
   '🌻': Color(0xFFffd54f),
+  '🦋': Color(0xFF80deea),
+  '🌹': Color(0xFFef9a9a),
+  '💝': Color(0xFFff80ab),
+  '🌺': Color(0xFFffab40),
+  '🌼': Color(0xFFfff176),
+  '🌠': Color(0xFF7986cb),
 };
 
 class EntryScreen extends StatefulWidget {
@@ -37,6 +46,8 @@ class _EntryScreenState extends State<EntryScreen> {
   late String _mood;
   late List<String> _tags;
   DateTime? _lockedUntil;
+  String _paperStyle = 'lined';
+  bool _isFavorite = false;
   bool _saving = false;
   bool _dirty  = false;
   bool _showPrompt = false;
@@ -58,6 +69,8 @@ class _EntryScreenState extends State<EntryScreen> {
     if (lu != null && lu.isNotEmpty) {
       _lockedUntil = DateTime.tryParse(lu);
     }
+    _paperStyle = widget.entry?['paper_style'] as String? ?? 'lined';
+    _isFavorite = widget.entry?['is_favorite'] as bool? ?? false;
     _showPrompt = !_isEdit;
     _title.addListener(_mark);
     _body.addListener(_mark);
@@ -93,6 +106,13 @@ class _EntryScreenState extends State<EntryScreen> {
     return t.isEmpty ? 0 : t.split(RegExp(r'\s+')).length;
   }
 
+  PaperStyle _toPaperStyle() => switch (_paperStyle) {
+    'dotted' => PaperStyle.dotted,
+    'grid'   => PaperStyle.grid,
+    'plain'  => PaperStyle.plain,
+    _        => PaperStyle.lined,
+  };
+
   Future<void> _pickSealDate() async {
     final t = ThemeService.current;
     final picked = await showDatePicker(
@@ -121,11 +141,15 @@ class _EntryScreenState extends State<EntryScreen> {
           title: _title.text, body: _body.text, mood: _mood, tags: _tagsString,
           lockedUntil: luStr,
           clearLock: _lockedUntil == null && widget.entry?['locked_until'] != null,
+          paperStyle: _paperStyle,
+          isFavorite: _isFavorite,
         );
       } else {
         await ApiService.createEntry(
           title: _title.text, body: _body.text, mood: _mood, tags: _tagsString,
           lockedUntil: luStr,
+          paperStyle: _paperStyle,
+          isFavorite: _isFavorite,
         );
       }
       if (mounted) Navigator.of(context).pop(true);
@@ -180,6 +204,16 @@ class _EntryScreenState extends State<EntryScreen> {
           style: GoogleFonts.cinzelDecorative(color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w500),
         ),
         actions: [
+          // Favorite toggle
+          IconButton(
+            icon: Icon(
+              _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              color: _isFavorite ? const Color(0xFFf48fb1) : t.appBarFg,
+              size: 20,
+            ),
+            onPressed: () => setState(() { _isFavorite = !_isFavorite; _dirty = true; }),
+            tooltip: _isFavorite ? 'Unfavorite' : 'Favorite',
+          ),
           if (_isEdit)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
@@ -200,18 +234,14 @@ class _EntryScreenState extends State<EntryScreen> {
       ),
       body: LayoutBuilder(
         builder: (ctx, constraints) {
-          // Wide (desktop/tablet): two-column panel layout
-          if (constraints.maxWidth >= 700) {
-            return _wideLayout(t);
-          }
-          // Narrow (mobile): stacked single-column layout
+          if (constraints.maxWidth >= 700) return _wideLayout(t);
           return _narrowLayout(t);
         },
       ),
     );
   }
 
-  // ── Wide layout: left panel + right paper ──────────────────────────────────
+  // ── Wide layout ────────────────────────────────────────────────────────────
 
   Widget _wideLayout(dynamic t) {
     final moodColor = _mood.isNotEmpty ? (_moodColors[_mood] ?? t.accent) : null;
@@ -230,27 +260,18 @@ class _EntryScreenState extends State<EntryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Date + moon
                 _panelSection(t, null, _dateBlock(t)),
                 const SizedBox(height: 16),
-
-                // Mood
                 _panelSection(t, 'Mood', _moodGrid(t)),
                 const SizedBox(height: 16),
-
-                // Tags
+                _panelSection(t, 'Paper', _paperStylePanel(t)),
+                const SizedBox(height: 16),
                 _panelSection(t, 'Tags', _tagsPanel(t)),
                 const SizedBox(height: 16),
-
-                // Memory Capsule
                 _panelSection(t, 'Memory Capsule', _capsulePanel(t)),
                 const SizedBox(height: 16),
-
-                // Writing prompt
                 if (_showPrompt)
                   _panelSection(t, 'Writing prompt', _promptPanel(t)),
-
-                // Stats
                 if (_wordCount > 0) ...[
                   const SizedBox(height: 16),
                   _panelSection(t, 'Stats', _statsPanel(t, moodColor)),
@@ -267,13 +288,11 @@ class _EntryScreenState extends State<EntryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Mood colour strip
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   height: 3,
                   color: moodColor?.withValues(alpha: 0.55) ?? t.border,
                 ),
-                // Title
                 Padding(
                   padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
                   child: TextField(
@@ -292,9 +311,9 @@ class _EntryScreenState extends State<EntryScreen> {
                   child: Divider(color: t.border, thickness: 0.7, height: 1),
                 ),
                 const SizedBox(height: 4),
-                // Body
                 Expanded(
                   child: RuledPaper(
+                    style: _toPaperStyle(),
                     lineColor: t.lines,
                     spacing: 32,
                     child: Padding(
@@ -304,11 +323,11 @@ class _EntryScreenState extends State<EntryScreen> {
                         maxLines: null,
                         expands: true,
                         textAlignVertical: TextAlignVertical.top,
-                        style: GoogleFonts.lora(color: t.ink, fontSize: 16, height: 2.0),
+                        style: GoogleFonts.lora(color: t.ink, fontSize: 18, height: 1.95),
                         decoration: InputDecoration(
                           hintText: 'Write your thoughts…',
                           hintStyle: GoogleFonts.lora(
-                            color: t.muted.withValues(alpha: 0.38), fontSize: 16, fontStyle: FontStyle.italic),
+                            color: t.muted.withValues(alpha: 0.38), fontSize: 18, fontStyle: FontStyle.italic),
                           border: InputBorder.none,
                         ),
                       ),
@@ -323,7 +342,7 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  // ── Narrow layout: stacked ─────────────────────────────────────────────────
+  // ── Narrow layout ──────────────────────────────────────────────────────────
 
   Widget _narrowLayout(dynamic t) {
     final moodColor = _mood.isNotEmpty ? (_moodColors[_mood] ?? t.accent) : null;
@@ -331,7 +350,6 @@ class _EntryScreenState extends State<EntryScreen> {
       color: t.paper,
       child: Column(
         children: [
-          // Mood strip top
           Container(
             color: t.paper,
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
@@ -371,7 +389,6 @@ class _EntryScreenState extends State<EntryScreen> {
             height: 2,
             color: moodColor?.withValues(alpha: 0.5) ?? t.border,
           ),
-          // Title
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 0),
             child: TextField(
@@ -390,7 +407,6 @@ class _EntryScreenState extends State<EntryScreen> {
             child: Divider(color: t.border, thickness: 0.6, height: 1),
           ),
           const SizedBox(height: 4),
-          // Writing prompt
           if (_showPrompt)
             WritingPromptCard(
               paperColor: t.paper,
@@ -404,9 +420,9 @@ class _EntryScreenState extends State<EntryScreen> {
                 setState(() => _showPrompt = false);
               },
             ),
-          // Body
           Expanded(
             child: RuledPaper(
+              style: _toPaperStyle(),
               lineColor: t.lines,
               spacing: 30,
               child: Padding(
@@ -416,18 +432,17 @@ class _EntryScreenState extends State<EntryScreen> {
                   maxLines: null,
                   expands: true,
                   textAlignVertical: TextAlignVertical.top,
-                  style: GoogleFonts.lora(color: t.ink, fontSize: 15, height: 2.0),
+                  style: GoogleFonts.lora(color: t.ink, fontSize: 17, height: 1.95),
                   decoration: InputDecoration(
                     hintText: 'Write your thoughts…',
                     hintStyle: GoogleFonts.lora(
-                      color: t.muted.withValues(alpha: 0.38), fontSize: 15, fontStyle: FontStyle.italic),
+                      color: t.muted.withValues(alpha: 0.38), fontSize: 17, fontStyle: FontStyle.italic),
                     border: InputBorder.none,
                   ),
                 ),
               ),
             ),
           ),
-          // Tags bottom bar
           Container(
             color: t.paper,
             padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
@@ -462,7 +477,7 @@ class _EntryScreenState extends State<EntryScreen> {
         if (label != null) ...[
           Text(
             label.toUpperCase(),
-            style: TextStyle(color: t.muted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1),
+            style: TextStyle(color: t.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1),
           ),
           const SizedBox(height: 8),
         ],
@@ -523,6 +538,37 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
+  Widget _paperStylePanel(dynamic t) {
+    final styles = <(String, String, IconData)>[
+      ('plain',  'Plain',  Icons.view_stream_rounded),
+      ('lined',  'Lined',  Icons.reorder_rounded),
+      ('dotted', 'Dotted', Icons.apps_rounded),
+      ('grid',   'Grid',   Icons.grid_on_rounded),
+    ];
+    return Wrap(
+      spacing: 6, runSpacing: 6,
+      children: styles.map((s) {
+        final sel = _paperStyle == s.$1;
+        return GestureDetector(
+          onTap: () => setState(() { _paperStyle = s.$1; _dirty = true; }),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: sel ? t.accent.withValues(alpha: 0.15) : t.paper,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: sel ? t.accent : t.border, width: sel ? 1.2 : 0.6),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(s.$3, size: 12, color: sel ? t.accent : t.muted),
+              const SizedBox(width: 4),
+              Text(s.$2, style: TextStyle(color: sel ? t.accent : t.muted, fontSize: 12, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
   Widget _tagsPanel(dynamic t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -541,7 +587,7 @@ class _EntryScreenState extends State<EntryScreen> {
 
   Widget _tagChip(String tag, dynamic t) {
     return InputChip(
-      label: Text('#$tag', style: TextStyle(color: t.accent, fontSize: 11, fontWeight: FontWeight.w600)),
+      label: Text('#$tag', style: TextStyle(color: t.accent, fontSize: 13, fontWeight: FontWeight.w600)),
       onDeleted: () => _removeTag(tag),
       deleteIcon: Icon(Icons.close, size: 11, color: t.muted),
       backgroundColor: t.accent.withValues(alpha: 0.1),
@@ -665,9 +711,9 @@ class _EntryScreenState extends State<EntryScreen> {
   Widget _statRow(dynamic t, String label, String value) {
     return Row(
       children: [
-        Text(label, style: TextStyle(color: t.muted, fontSize: 11)),
+        Text(label, style: TextStyle(color: t.muted, fontSize: 13)),
         const Spacer(),
-        Text(value, style: TextStyle(color: t.heading, fontSize: 12, fontWeight: FontWeight.w600)),
+        Text(value, style: TextStyle(color: t.heading, fontSize: 14, fontWeight: FontWeight.w600)),
       ],
     );
   }

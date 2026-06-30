@@ -15,6 +15,8 @@ class EntryCreate(BaseModel):
     mood: str = ""
     tags: str = ""
     locked_until: Optional[str] = None
+    paper_style: str = "lined"
+    is_favorite: bool = False
 
 class EntryUpdate(BaseModel):
     title: Optional[str] = None
@@ -22,6 +24,8 @@ class EntryUpdate(BaseModel):
     mood: Optional[str] = None
     tags: Optional[str] = None
     locked_until: Optional[str] = None
+    paper_style: Optional[str] = None
+    is_favorite: Optional[bool] = None
 
 class EntryOut(BaseModel):
     id: UUID
@@ -30,6 +34,8 @@ class EntryOut(BaseModel):
     mood: str
     tags: str = ""
     locked_until: Optional[str] = None
+    paper_style: str = "lined"
+    is_favorite: bool = False
     created_at: datetime
     updated_at: datetime
 

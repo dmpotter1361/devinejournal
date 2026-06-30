@@ -131,12 +131,50 @@ const paperThemeForest = PaperTheme(
   brightness: Brightness.dark,
 );
 
+const paperThemeCelestial = PaperTheme(
+  id: 'celestial',
+  name: 'Celestial',
+  dot: Color(0xFFb39dff),
+  bg: Color(0xFF090916),
+  paper: Color(0xFF0f0f28),
+  card: Color(0xFF15153a),
+  ink: Color(0xFFe8e0f8),
+  heading: Color(0xFFd4c0ff),
+  accent: Color(0xFFb39dff),
+  muted: Color(0xFF7a6a9a),
+  border: Color(0xFF2a2055),
+  lines: Color(0xFF221d48),
+  appBarBg: Color(0xFF0a0a1e),
+  appBarFg: Color(0xFFc8b4ff),
+  brightness: Brightness.dark,
+);
+
+const paperThemeRosewood = PaperTheme(
+  id: 'rosewood',
+  name: 'Rosewood',
+  dot: Color(0xFFe89aac),
+  bg: Color(0xFF1a0a10),
+  paper: Color(0xFF261218),
+  card: Color(0xFF301720),
+  ink: Color(0xFFf0dce4),
+  heading: Color(0xFFf4c4d4),
+  accent: Color(0xFFe89aac),
+  muted: Color(0xFF8a5a6a),
+  border: Color(0xFF4a2030),
+  lines: Color(0xFF3a1828),
+  appBarBg: Color(0xFF1a0a10),
+  appBarFg: Color(0xFFf0b8c8),
+  brightness: Brightness.dark,
+);
+
 const List<PaperTheme> allPaperThemes = [
   paperThemeMidnight,
   paperThemeParchment,
   paperThemeMoonlit,
   paperThemeDawn,
   paperThemeForest,
+  paperThemeCelestial,
+  paperThemeRosewood,
 ];
 
 PaperTheme paperThemeById(String id) =>

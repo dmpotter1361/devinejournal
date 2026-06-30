@@ -7,6 +7,7 @@ import '../services/theme_service.dart';
 import '../theme.dart';
 import '../utils/moon_phase.dart';
 import '../utils/journal_stats.dart';
+import '../utils/affirmations.dart';
 import '../widgets/star_field.dart';
 import 'entry_screen.dart';
 import 'calendar_screen.dart';
@@ -24,6 +25,12 @@ const _moodColors = {
   '🌊': Color(0xFF4dd0e1),
   '⚡': Color(0xFFffee58),
   '🌻': Color(0xFFffd54f),
+  '🦋': Color(0xFF80deea),
+  '🌹': Color(0xFFef9a9a),
+  '💝': Color(0xFFff80ab),
+  '🌺': Color(0xFFffab40),
+  '🌼': Color(0xFFfff176),
+  '🌠': Color(0xFF7986cb),
 };
 
 class TimelineScreen extends StatefulWidget {
@@ -44,6 +51,8 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
   bool _showSearch = false;
   String _searchQuery = '';
   String? _activeTag;
+  String? _activeMood;
+  bool _showFavoritesOnly = false;
   final _searchCtrl = TextEditingController();
 
   // Expandable FAB
@@ -86,11 +95,17 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
 
   List<Map<String, dynamic>> get _filtered {
     var list = _entries;
+    if (_showFavoritesOnly) {
+      list = list.where((e) => e['is_favorite'] == true).toList();
+    }
     if (_activeTag != null) {
       list = list.where((e) {
         final tags = (e['tags'] as String? ?? '').split(',').map((s) => s.trim());
         return tags.contains(_activeTag);
       }).toList();
+    }
+    if (_activeMood != null) {
+      list = list.where((e) => e['mood'] == _activeMood).toList();
     }
     final q = _searchQuery.trim().toLowerCase();
     if (q.isNotEmpty) {
@@ -176,12 +191,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
         ]),
         content: Text(
           'This memory will open on\n${DateFormat('MMMM d, yyyy').format(until.toLocal())}.\n\nCome back then — it will be waiting for you.',
-          style: GoogleFonts.lora(color: t.ink, fontSize: 14, height: 1.6),
+          style: GoogleFonts.lora(color: t.ink, fontSize: 15, height: 1.6),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('I\'ll wait', style: TextStyle(color: t.accent)),
+            child: Text('I\'ll wait', style: TextStyle(color: t.accent, fontSize: 15)),
           ),
         ],
       ),
@@ -240,13 +255,14 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
   @override
   Widget build(BuildContext context) {
     final t = _t;
-    final showStars = t.id == 'midnight' || t.id == 'forest';
+    final showStars = t.id == 'midnight' || t.id == 'forest' || t.id == 'celestial';
+    final starColor = t.id == 'celestial' ? const Color(0xFFd4c8ff) : Colors.white;
 
     Widget body;
     if (_loading) {
       body = Center(child: CircularProgressIndicator(color: t.accent, strokeWidth: 2));
     } else if (_error != null) {
-      body = Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 13)));
+      body = Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 14)));
     } else {
       final streak = journalStreak(_entries);
       final words  = totalWordCount(_entries);
@@ -265,11 +281,11 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                     child: TextField(
                       controller: _searchCtrl,
                       autofocus: true,
-                      style: TextStyle(color: t.appBarFg, fontSize: 14),
+                      style: TextStyle(color: t.appBarFg, fontSize: 15),
                       onChanged: (v) => setState(() => _searchQuery = v),
                       decoration: InputDecoration(
                         hintText: 'Search your journal…',
-                        hintStyle: TextStyle(color: t.appBarFg.withValues(alpha: 0.45), fontSize: 14),
+                        hintStyle: TextStyle(color: t.appBarFg.withValues(alpha: 0.45), fontSize: 15),
                         prefixIcon: Icon(Icons.search, color: t.appBarFg.withValues(alpha: 0.6), size: 18),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
@@ -289,6 +305,26 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                 : const SizedBox.shrink(),
           ),
 
+          // Favorites banner
+          if (_showFavoritesOnly)
+            Container(
+              color: const Color(0xFFf48fb1).withValues(alpha: 0.12),
+              padding: const EdgeInsets.fromLTRB(16, 5, 16, 5),
+              child: Row(
+                children: [
+                  const Icon(Icons.favorite_rounded, size: 14, color: Color(0xFFf48fb1)),
+                  const SizedBox(width: 6),
+                  Text('Favorites — ${shown.length} ${shown.length == 1 ? 'entry' : 'entries'}',
+                    style: const TextStyle(color: Color(0xFFf48fb1), fontSize: 13, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => setState(() => _showFavoritesOnly = false),
+                    child: Icon(Icons.close, size: 14, color: t.muted),
+                  ),
+                ],
+              ),
+            ),
+
           // Active tag filter chip
           if (_activeTag != null)
             Container(
@@ -306,7 +342,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('#$_activeTag', style: TextStyle(color: t.accent, fontSize: 12, fontWeight: FontWeight.w700)),
+                        Text('#$_activeTag', style: TextStyle(color: t.accent, fontSize: 13, fontWeight: FontWeight.w700)),
                         const SizedBox(width: 6),
                         GestureDetector(
                           onTap: () => setState(() => _activeTag = null),
@@ -317,7 +353,37 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                   ),
                   const SizedBox(width: 8),
                   Text('${shown.length} ${shown.length == 1 ? 'entry' : 'entries'}',
-                    style: TextStyle(color: t.muted, fontSize: 11)),
+                    style: TextStyle(color: t.muted, fontSize: 12)),
+                ],
+              ),
+            ),
+
+          // Active mood filter chip
+          if (_activeMood != null)
+            Container(
+              color: t.card,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (_moodColors[_activeMood] ?? t.accent).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: (_moodColors[_activeMood] ?? t.accent).withValues(alpha: 0.3), width: 0.7),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_activeMood!, style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => setState(() => _activeMood = null),
+                        child: Icon(Icons.close, size: 13, color: t.muted),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${shown.length} ${shown.length == 1 ? 'entry' : 'entries'}',
+                    style: TextStyle(color: t.muted, fontSize: 12)),
                 ],
               ),
             ),
@@ -345,10 +411,6 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
       );
     }
 
-    if (t.id == 'midnight' || t.id == 'forest') {
-      body = StarField(starColor: Colors.white, count: 80, child: body);
-    }
-
     return GestureDetector(
       onTap: _closeFab,
       child: Scaffold(
@@ -370,6 +432,15 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
               },
             ),
             IconButton(
+              icon: Icon(
+                _showFavoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                color: _showFavoritesOnly ? const Color(0xFFf48fb1) : t.appBarFg,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _showFavoritesOnly = !_showFavoritesOnly),
+              tooltip: _showFavoritesOnly ? 'All entries' : 'Favorites',
+            ),
+            IconButton(
               icon: Icon(Icons.calendar_month_outlined, color: t.appBarFg, size: 20),
               tooltip: 'Mood calendar',
               onPressed: _loading ? null : _openCalendar,
@@ -381,7 +452,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
                 child: Row(
                   children: allPaperThemes.map((pt) => Container(
-                    width: 10, height: 10,
+                    width: 9, height: 9,
                     margin: const EdgeInsets.symmetric(horizontal: 2),
                     decoration: BoxDecoration(
                       color: pt.dot,
@@ -409,7 +480,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
           ],
         ),
         floatingActionButton: _buildFab(_t),
-        body: showStars ? StarField(starColor: Colors.white, count: 80, child: body) : body,
+        body: showStars ? StarField(starColor: starColor, count: 80, child: body) : body,
       ),
     );
   }
@@ -423,7 +494,6 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // Mini: Gratitude
         AnimatedSlide(
           offset: _fabExpanded ? Offset.zero : const Offset(0, 0.5),
           duration: const Duration(milliseconds: 180),
@@ -444,7 +514,6 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
             ),
           ),
         ),
-        // Mini: New Entry
         AnimatedSlide(
           offset: _fabExpanded ? Offset.zero : const Offset(0, 0.5),
           duration: const Duration(milliseconds: 200),
@@ -465,7 +534,6 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
             ),
           ),
         ),
-        // Main FAB
         RotationTransition(
           turns: _fabRotate,
           child: FloatingActionButton(
@@ -501,7 +569,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(moon, style: const TextStyle(fontSize: 26)),
+              Text(moon, style: const TextStyle(fontSize: 28)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -510,16 +578,21 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                     Text(
                       '$_greeting, $_firstName',
                       style: GoogleFonts.cormorant(
-                        color: t.heading, fontSize: 22,
+                        color: t.heading, fontSize: 24,
                         fontWeight: FontWeight.w600, fontStyle: FontStyle.italic,
                       ),
                     ),
-                    Text(dateStr, style: TextStyle(color: t.muted, fontSize: 11.5)),
+                    Text(dateStr, style: TextStyle(color: t.muted, fontSize: 13)),
                   ],
                 ),
               ),
               if (streak > 0) _badge(streak >= 7 ? '🔥' : '✦', streak == 1 ? '1 day' : '$streak days', t),
             ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '"${todaysAffirmation()}"',
+            style: GoogleFonts.lora(color: t.muted, fontSize: 13, fontStyle: FontStyle.italic, height: 1.55),
           ),
           if (words > 0) ...[
             const SizedBox(height: 10),
@@ -547,9 +620,9 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
         border: Border.all(color: t.accent.withValues(alpha: 0.35), width: 0.8),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Text(icon, style: const TextStyle(fontSize: 12)),
+        Text(icon, style: const TextStyle(fontSize: 13)),
         const SizedBox(width: 4),
-        Text(label, style: TextStyle(color: t.accent, fontSize: 11, fontWeight: FontWeight.w700)),
+        Text(label, style: TextStyle(color: t.accent, fontSize: 12, fontWeight: FontWeight.w700)),
       ]),
     );
   }
@@ -563,7 +636,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
       ),
       child: Text(
         combined ? val : '$val $label',
-        style: TextStyle(color: t.muted, fontSize: 10.5),
+        style: TextStyle(color: t.muted, fontSize: 12),
       ),
     );
   }
@@ -575,7 +648,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
     final yearsAgo = date != null ? DateTime.now().year - date.year : 0;
     final title = entry['title'] as String? ?? 'Untitled';
     final body = entry['body'] as String? ?? '';
-    final preview = body.length > 80 ? '${body.substring(0, 80)}…' : body;
+    final preview = body.length > 100 ? '${body.substring(0, 100)}…' : body;
     final mood = entry['mood'] as String? ?? '';
     final moodColor = _moodColors[mood] ?? t.accent;
 
@@ -583,7 +656,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
       onTap: () => _openEntry(entry),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [t.accent.withValues(alpha: 0.08), t.card],
@@ -598,31 +671,31 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
           children: [
             Row(
               children: [
-                Text('📅', style: const TextStyle(fontSize: 14)),
+                const Text('📅', style: TextStyle(fontSize: 15)),
                 const SizedBox(width: 6),
                 Text(
                   '${yearsAgo == 1 ? '1 year' : '$yearsAgo years'} ago today',
-                  style: TextStyle(color: t.accent, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+                  style: TextStyle(color: t.accent, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5),
                 ),
                 const Spacer(),
                 if (mood.isNotEmpty)
                   Container(
-                    width: 22, height: 22,
+                    width: 26, height: 26,
                     decoration: BoxDecoration(
                       color: moodColor.withValues(alpha: 0.15), shape: BoxShape.circle,
                     ),
-                    child: Center(child: Text(mood, style: const TextStyle(fontSize: 12))),
+                    child: Center(child: Text(mood, style: const TextStyle(fontSize: 14))),
                   ),
               ],
             ),
             const SizedBox(height: 6),
             Text(
               title.isNotEmpty ? title : 'Untitled',
-              style: GoogleFonts.cormorant(color: t.heading, fontSize: 16, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic),
+              style: GoogleFonts.cormorant(color: t.heading, fontSize: 18, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic),
             ),
             if (preview.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(preview, style: TextStyle(color: t.ink.withValues(alpha: 0.6), fontSize: 12, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(preview, style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 13, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
             ],
           ],
         ),
@@ -635,12 +708,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
   Widget _emptyState(PaperTheme t) {
     return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text('🌙', style: const TextStyle(fontSize: 56)),
+        const Text('🌙', style: TextStyle(fontSize: 56)),
         const SizedBox(height: 20),
         Text('Your journal awaits',
           style: GoogleFonts.cormorant(color: t.heading, fontSize: 28, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
         const SizedBox(height: 8),
-        Text('Tap + below to write your first entry', style: TextStyle(color: t.muted, fontSize: 13)),
+        Text('Tap + below to write your first entry', style: TextStyle(color: t.muted, fontSize: 14)),
       ]),
     );
   }
@@ -659,9 +732,10 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
     final tags  = tagsRaw.isNotEmpty
         ? tagsRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).take(3).toList()
         : <String>[];
-    final preview = body.length > 120 ? '${body.substring(0, 120)}…' : body;
+    final preview = body.length > 130 ? '${body.substring(0, 130)}…' : body;
     final moodColor = _moodColors[mood] ?? t.accent;
     final sealed = _isSealed(entry);
+    final isFav = entry['is_favorite'] == true;
 
     return GestureDetector(
       onTap: () => _openEntry(entry),
@@ -681,7 +755,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
           children: [
             // Date column
             Container(
-              width: 56,
+              width: 60,
               padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
                 color: sealed
@@ -692,15 +766,15 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
               ),
               child: Column(children: [
                 if (sealed)
-                  const Text('🔒', style: TextStyle(fontSize: 18))
+                  const Text('🔒', style: TextStyle(fontSize: 20))
                 else ...[
                   Text(month.toUpperCase(),
-                    style: TextStyle(color: mood.isNotEmpty ? moodColor : t.muted, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                    style: TextStyle(color: mood.isNotEmpty ? moodColor : t.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                   const SizedBox(height: 2),
                   Text(day,
                     style: GoogleFonts.cinzelDecorative(color: t.heading, fontSize: 22, fontWeight: FontWeight.w700, height: 1)),
                   const SizedBox(height: 2),
-                  Text(year, style: TextStyle(color: t.muted, fontSize: 9)),
+                  Text(year, style: TextStyle(color: t.muted, fontSize: 10)),
                 ],
               ]),
             ),
@@ -718,7 +792,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                           sealed ? 'Sealed memory' : (title.isNotEmpty ? title : 'Untitled'),
                           style: GoogleFonts.cormorant(
                             color: sealed ? t.muted : (title.isNotEmpty ? t.heading : t.muted),
-                            fontSize: 17,
+                            fontSize: 19,
                             fontWeight: FontWeight.w700,
                             fontStyle: (sealed || title.isEmpty) ? FontStyle.italic : FontStyle.normal,
                           ),
@@ -726,16 +800,24 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (isFav)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 5),
+                          child: Icon(Icons.favorite_rounded, size: 14, color: Color(0xFFf48fb1)),
+                        ),
                       if (mood.isNotEmpty && !sealed)
-                        Container(
-                          width: 26, height: 26,
-                          margin: const EdgeInsets.only(left: 6),
-                          decoration: BoxDecoration(
-                            color: moodColor.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: moodColor.withValues(alpha: 0.4), width: 0.7),
+                        GestureDetector(
+                          onTap: () => setState(() => _activeMood = mood == _activeMood ? null : mood),
+                          child: Container(
+                            width: 28, height: 28,
+                            margin: const EdgeInsets.only(left: 6),
+                            decoration: BoxDecoration(
+                              color: moodColor.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: moodColor.withValues(alpha: 0.4), width: 0.7),
+                            ),
+                            child: Center(child: Text(mood, style: const TextStyle(fontSize: 14))),
                           ),
-                          child: Center(child: Text(mood, style: const TextStyle(fontSize: 13))),
                         ),
                     ]),
 
@@ -745,12 +827,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                         final lu = DateTime.tryParse(entry['locked_until'] as String? ?? '');
                         return Text(
                           lu != null ? 'Opens ${DateFormat('MMM d, yyyy').format(lu.toLocal())}' : 'Sealed',
-                          style: TextStyle(color: t.muted, fontSize: 12, fontStyle: FontStyle.italic),
+                          style: TextStyle(color: t.muted, fontSize: 13, fontStyle: FontStyle.italic),
                         );
                       }),
                     ] else if (preview.isNotEmpty) ...[
                       Text(preview,
-                        style: TextStyle(color: t.ink.withValues(alpha: 0.6), fontSize: 12, height: 1.5),
+                        style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 13, height: 1.5),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -769,7 +851,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(color: t.accent.withValues(alpha: 0.25), width: 0.6),
                             ),
-                            child: Text('#$tag', style: TextStyle(color: t.accent, fontSize: 10, fontWeight: FontWeight.w600)),
+                            child: Text('#$tag', style: TextStyle(color: t.accent, fontSize: 12, fontWeight: FontWeight.w600)),
                           ),
                         )).toList(),
                       ),
@@ -811,14 +893,17 @@ class _ThemePicker extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Choose your paper',
-            style: GoogleFonts.cormorant(color: t.heading, fontSize: 22, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
+            style: GoogleFonts.cormorant(color: t.heading, fontSize: 24, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
           const SizedBox(height: 16),
-          Row(children: allPaperThemes.take(3).map((pt) => _card(pt, t, context)).toList()),
-          const SizedBox(height: 8),
-          Row(children: [
-            ...allPaperThemes.skip(3).map((pt) => _card(pt, t, context)),
-            const Expanded(child: SizedBox()),
-          ]),
+          LayoutBuilder(builder: (_, constraints) {
+            final cardW = (constraints.maxWidth - 8 * 3) / 4;
+            return Wrap(
+              spacing: 8, runSpacing: 10,
+              children: allPaperThemes.map((pt) =>
+                SizedBox(width: cardW, child: _card(pt, t, context))
+              ).toList(),
+            );
+          }),
         ],
       ),
     );
@@ -826,25 +911,22 @@ class _ThemePicker extends StatelessWidget {
 
   Widget _card(PaperTheme pt, PaperTheme cur, BuildContext context) {
     final sel = pt.id == cur.id;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () { onSelect(pt); Navigator.of(context).pop(); },
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: pt.paper,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: sel ? pt.accent : pt.border, width: sel ? 2.0 : 0.7),
-            boxShadow: sel ? [BoxShadow(color: pt.accent.withValues(alpha: 0.2), blurRadius: 8)] : [],
-          ),
-          child: Column(children: [
-            Container(width: 22, height: 22, decoration: BoxDecoration(color: pt.dot, shape: BoxShape.circle)),
-            const SizedBox(height: 6),
-            Text(pt.name, style: TextStyle(color: pt.ink, fontSize: 11, fontWeight: FontWeight.w600)),
-            if (sel) ...[const SizedBox(height: 3), Icon(Icons.check_circle, size: 12, color: pt.accent)],
-          ]),
+    return GestureDetector(
+      onTap: () { onSelect(pt); Navigator.of(context).pop(); },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+        decoration: BoxDecoration(
+          color: pt.paper,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: sel ? pt.accent : pt.border, width: sel ? 2.0 : 0.7),
+          boxShadow: sel ? [BoxShadow(color: pt.accent.withValues(alpha: 0.2), blurRadius: 8)] : [],
         ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 22, height: 22, decoration: BoxDecoration(color: pt.dot, shape: BoxShape.circle)),
+          const SizedBox(height: 6),
+          Text(pt.name, style: TextStyle(color: pt.ink, fontSize: 11, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+          if (sel) ...[const SizedBox(height: 3), Icon(Icons.check_circle, size: 12, color: pt.accent)],
+        ]),
       ),
     );
   }
