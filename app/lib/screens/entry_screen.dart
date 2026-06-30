@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
 import '../services/api_service.dart';
 import '../services/theme_service.dart';
 import '../theme.dart';
@@ -215,23 +215,27 @@ class _EntryScreenState extends State<EntryScreen> {
 
   Future<void> _pickPhoto() async {
     if (_uploading) return;
+
+    // Open file picker directly in the user gesture (browser blocks deferred opens)
+    final input = html.FileUploadInputElement()
+      ..accept = 'image/*'
+      ..click();
+
+    await input.onChange.first;
+    if (input.files == null || input.files!.isEmpty) return;
+
+    final htmlFile = input.files!.first;
+    final reader = html.FileReader();
+    reader.readAsArrayBuffer(htmlFile);
+    await reader.onLoadEnd.first;
+    final bytes = reader.result as Uint8List;
+
     if (!await _ensureSaved()) return;
-
-    FilePickerResult? result;
-    try {
-      result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
-    } catch (_) {
-      return;
-    }
-    if (result == null || result.files.isEmpty) return;
-    final file = result.files.first;
-    final bytes = file.bytes;
-    if (bytes == null) return;
-
     if (!mounted) return;
+
     setState(() => _uploading = true);
     try {
-      final photo = await ApiService.uploadPhoto(_entryId!, bytes, file.name);
+      final photo = await ApiService.uploadPhoto(_entryId!, bytes, htmlFile.name);
       if (mounted) {
         setState(() {
           _photos.add(photo);
@@ -1184,8 +1188,8 @@ class _EntryScreenState extends State<EntryScreen> {
         if (label != null) ...[
           Text(label.toUpperCase(),
               style: TextStyle(
-                  color: t.muted,
-                  fontSize: 10,
+                  color: t.heading.withValues(alpha: 0.6),
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1)),
           const SizedBox(height: 8),
@@ -1442,7 +1446,7 @@ class _EntryScreenState extends State<EntryScreen> {
         ),
         const SizedBox(height: 4),
         Text('Entry stays sealed until that date.',
-            style: TextStyle(color: t.muted.withValues(alpha: 0.6), fontSize: 10)),
+            style: TextStyle(color: t.muted, fontSize: 11)),
       ],
     );
   }
@@ -1470,7 +1474,7 @@ class _EntryScreenState extends State<EntryScreen> {
   Widget _statRow(dynamic t, String label, String value) {
     return Row(
       children: [
-        Text(label, style: TextStyle(color: t.muted, fontSize: 13)),
+        Text(label, style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 13)),
         const Spacer(),
         Text(value,
             style: TextStyle(color: t.heading, fontSize: 14, fontWeight: FontWeight.w600)),
