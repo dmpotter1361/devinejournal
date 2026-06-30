@@ -718,8 +718,8 @@ class _EntryScreenState extends State<EntryScreen> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.add_photo_alternate_rounded, size: 16, color: Colors.white),
           const SizedBox(width: 6),
-          Text('Add Photo',
-              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          const Text('Add Image',
+              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
         ]),
       ),
     );
@@ -1106,7 +1106,7 @@ class _EntryScreenState extends State<EntryScreen> {
           _statRow(t, 'Mood', _mood),
         if (_photos.isNotEmpty) ...[
           const SizedBox(height: 4),
-          _statRow(t, 'Photos', '${_photos.length}'),
+          _statRow(t, 'Images', '${_photos.length}'),
         ],
       ],
     );
