@@ -142,7 +142,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     d,
                     style: TextStyle(
                       color: t.muted,
-                      fontSize: 11,
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
                     ),
@@ -215,15 +215,15 @@ class _DayCell extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (moodEmoji.isNotEmpty)
-              Text(moodEmoji, style: const TextStyle(fontSize: 13))
+              Text(moodEmoji, style: const TextStyle(fontSize: 20))
             else
-              const SizedBox(height: 13),
-            const SizedBox(height: 1),
+              const SizedBox(height: 20),
+            const SizedBox(height: 2),
             Text(
               '$day',
               style: TextStyle(
                 color: hasEntry ? (moodColor ?? t.heading) : t.muted,
-                fontSize: 11,
+                fontSize: 16,
                 fontWeight: hasEntry ? FontWeight.w700 : FontWeight.w400,
               ),
             ),
@@ -263,7 +263,7 @@ class _MoodLegend extends StatelessWidget {
                     decoration: BoxDecoration(color: c, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 4),
-                  Text(m, style: const TextStyle(fontSize: 11)),
+                  Text(m, style: const TextStyle(fontSize: 16)),
                 ],
               );
             }).toList(),

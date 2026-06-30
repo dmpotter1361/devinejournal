@@ -104,7 +104,7 @@ class _GratitudeScreenState extends State<GratitudeScreen> {
                     ),
                     Text(
                       DateFormat('EEEE, MMMM d').format(DateTime.now()),
-                      style: TextStyle(color: t.muted, fontSize: 12),
+                      style: TextStyle(color: t.muted, fontSize: 16),
                     ),
                   ],
                 ),
@@ -130,7 +130,7 @@ class _GratitudeScreenState extends State<GratitudeScreen> {
                 'Gratitude rewires the mind toward beauty. Even one true thing is enough.',
                 style: GoogleFonts.lora(
                   color: t.muted,
-                  fontSize: 13,
+                  fontSize: 16,
                   fontStyle: FontStyle.italic,
                   height: 1.6,
                 ),
