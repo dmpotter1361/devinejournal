@@ -22,13 +22,13 @@ class AuthService {
     userPic  = prefs.getString(_picKey);
   }
 
-  static Future<bool> signInWithGoogle(String apiBase) async {
+  static Future<void> signInWithGoogle(String apiBase) async {
     final account = await _googleSignIn.signIn();
-    if (account == null) return false;
+    if (account == null) throw Exception('Google sign-in was cancelled.');
 
     final auth = await account.authentication;
     final idToken = auth.idToken;
-    if (idToken == null) return false;
+    if (idToken == null) throw Exception('No ID token returned from Google — try again or use a different browser.');
 
     final res = await http.post(
       Uri.parse('$apiBase/api/auth/google'),
@@ -36,7 +36,9 @@ class AuthService {
       body: jsonEncode({'credential': idToken}),
     );
 
-    if (res.statusCode != 200) return false;
+    if (res.statusCode != 200) {
+      throw Exception('Server rejected sign-in (${res.statusCode}): ${res.body}');
+    }
 
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     token    = body['access_token'] as String;
@@ -47,7 +49,6 @@ class AuthService {
     await prefs.setString(_tokenKey, token!);
     await prefs.setString(_nameKey, userName!);
     await prefs.setString(_picKey, userPic!);
-    return true;
   }
 
   static Future<void> signOut() async {

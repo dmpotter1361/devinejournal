@@ -19,14 +19,10 @@ class _SignInScreenState extends State<SignInScreen> {
   Future<void> _signIn() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final ok = await AuthService.signInWithGoogle(_apiBase);
-      if (ok) {
-        widget.onSignedIn();
-      } else {
-        setState(() { _error = 'Sign-in cancelled.'; });
-      }
+      await AuthService.signInWithGoogle(_apiBase);
+      widget.onSignedIn();
     } catch (e) {
-      setState(() { _error = 'Sign-in failed: $e'; });
+      setState(() { _error = '$e'; });
     } finally {
       if (mounted) setState(() { _loading = false; });
     }
@@ -79,7 +75,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 const SizedBox(height: 48),
                 Text(
                   '✦  ✦  ✦',
-                  style: TextStyle(color: kGold.withOpacity(0.4), letterSpacing: 8),
+                  style: TextStyle(color: kGold.withValues(alpha: 0.4), letterSpacing: 8),
                 ),
               ],
             ),
