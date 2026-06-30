@@ -135,16 +135,16 @@ class _EntryScreenState extends State<EntryScreen> {
                       height: 44,
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
-                        color: selected ? kGold.withOpacity(0.2) : kSurface,
+                        color: selected ? kGold.withValues(alpha:0.2) : kSurface,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: selected ? kGold : kLavender.withOpacity(0.3),
+                          color: selected ? kGold : kLavender.withValues(alpha:0.3),
                           width: selected ? 1.5 : 0.5,
                         ),
                       ),
                       child: Center(
                         child: m.isEmpty
-                            ? Icon(Icons.mood, size: 18, color: selected ? kGold : kLavender.withOpacity(0.5))
+                            ? Icon(Icons.mood, size: 18, color: selected ? kGold : kLavender.withValues(alpha:0.5))
                             : Text(m, style: const TextStyle(fontSize: 20)),
                       ),
                     ),

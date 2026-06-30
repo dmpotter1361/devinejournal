@@ -49,7 +49,7 @@ ThemeData buildTheme() {
         borderSide: const BorderSide(color: kGold, width: 1.5),
       ),
       labelStyle: const TextStyle(color: kLavender),
-      hintStyle: TextStyle(color: kLavender.withOpacity(0.5)),
+      hintStyle: TextStyle(color: kLavender.withValues(alpha: 0.5)),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(

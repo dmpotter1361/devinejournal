@@ -113,8 +113,8 @@ class _TimelineScreenState extends State<TimelineScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Tap ✦ to write your first entry',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: kLavender.withOpacity(0.6)),
+            'Tap the ✏ button below to write your first entry',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: kLavender.withValues(alpha: 0.6)),
           ),
         ],
       ),
@@ -150,14 +150,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
                     child: Text(
                       title.isNotEmpty ? title : 'Untitled',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: title.isNotEmpty ? kGold : kLavender.withOpacity(0.5),
+                        color: title.isNotEmpty ? kGold : kLavender.withValues(alpha:0.5),
                         fontStyle: title.isEmpty ? FontStyle.italic : FontStyle.normal,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Text(dateStr, style: TextStyle(color: kLavender.withOpacity(0.6), fontSize: 12)),
+                  Text(dateStr, style: TextStyle(color: kLavender.withValues(alpha:0.6), fontSize: 12)),
                 ],
               ),
               if (preview.isNotEmpty) ...[
@@ -165,7 +165,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                 Text(
                   preview,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: kMoonWhite.withOpacity(0.7),
+                    color: kMoonWhite.withValues(alpha:0.7),
                     height: 1.5,
                   ),
                 ),
