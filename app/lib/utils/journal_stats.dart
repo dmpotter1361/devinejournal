@@ -1,3 +1,5 @@
+import 'body_utils.dart';
+
 int journalStreak(List<Map<String, dynamic>> entries) {
   if (entries.isEmpty) return 0;
 
@@ -30,7 +32,7 @@ int journalStreak(List<Map<String, dynamic>> entries) {
 
 int totalWordCount(List<Map<String, dynamic>> entries) {
   return entries.fold(0, (sum, e) {
-    final body = (e['body'] as String? ?? '').trim();
+    final body = bodyToPlainText(e['body'] as String? ?? '').trim();
     if (body.isEmpty) return sum;
     return sum + body.split(RegExp(r'\s+')).length;
   });

@@ -2,6 +2,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
+import 'body_utils.dart';
 
 Future<void> exportJournalPdf(List<Map<String, dynamic>> entries) async {
   final doc = pw.Document();
@@ -52,7 +53,7 @@ Future<void> exportJournalPdf(List<Map<String, dynamic>> entries) async {
   // ── One page per entry ───────────────────────────────────────────────────
   for (final e in sorted) {
     final title = (e['title'] as String? ?? '').trim();
-    final body  = (e['body']  as String? ?? '').trim();
+    final body  = bodyToPlainText(e['body'] as String? ?? '').trim();
     final mood  = e['mood']  as String? ?? '';
     final tags  = (e['tags']  as String? ?? '')
         .split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();

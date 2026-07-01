@@ -41,6 +41,33 @@ const _moodColors = {
   '🌠': Color(0xFF7986cb),
 };
 
+// ── Document block model ──────────────────────────────────────────────────────
+
+class _TextBlock {
+  final TextEditingController ctrl;
+  final FocusNode focusNode;
+  _TextBlock(String text)
+      : ctrl = TextEditingController(text: text),
+        focusNode = FocusNode();
+  void dispose() {
+    ctrl.dispose();
+    focusNode.dispose();
+  }
+}
+
+class _ImageBlock {
+  Map<String, dynamic> photo;
+  final TextEditingController captionCtrl;
+  final bool isPending;
+  _ImageBlock(Map<String, dynamic> p)
+      : photo = Map<String, dynamic>.from(p),
+        captionCtrl = TextEditingController(text: p['caption'] as String? ?? ''),
+        isPending = (p['_pending'] as bool?) ?? false;
+  void dispose() => captionCtrl.dispose();
+}
+
+// ── EntryScreen ───────────────────────────────────────────────────────────────
+
 class EntryScreen extends StatefulWidget {
   final Map<String, dynamic>? entry;
   final EntryTemplate? template;
@@ -52,27 +79,22 @@ class EntryScreen extends StatefulWidget {
 
 class _EntryScreenState extends State<EntryScreen> {
   late final TextEditingController _title;
-  late final TextEditingController _body;
   late String _mood;
   late List<String> _tags;
   DateTime? _lockedUntil;
   String _paperStyle = 'lined';
   bool _isFavorite = false;
   bool _saving = false;
-  bool _dirty  = false;
+  bool _dirty = false;
   bool _showPrompt = false;
   bool _previewMode = false;
   final _tagController = TextEditingController();
-
-  // Per-entry theme override (null/empty = use global theme)
   String? _themeId;
-
-  // Entry ID (null until first save for new entries)
   String? _entryId;
 
-  // Photos
-  List<Map<String, dynamic>> _photos = [];
-  List<TextEditingController> _captionControllers = [];
+  // Block editor
+  final _blocks = <dynamic>[]; // List<_TextBlock | _ImageBlock>
+  int _lastFocusedIdx = 0;
   bool _uploading = false;
 
   // Voice memos
@@ -86,7 +108,20 @@ class _EntryScreenState extends State<EntryScreen> {
   bool get _isEdit => _entryId != null;
 
   PaperTheme get _t =>
-      (_themeId != null && _themeId!.isNotEmpty) ? paperThemeById(_themeId!) : ThemeService.current;
+      (_themeId != null && _themeId!.isNotEmpty)
+          ? paperThemeById(_themeId!)
+          : ThemeService.current;
+
+  TextEditingController? get _focusedCtrl {
+    final idx = _lastFocusedIdx;
+    if (idx >= 0 && idx < _blocks.length && _blocks[idx] is _TextBlock) {
+      return (_blocks[idx] as _TextBlock).ctrl;
+    }
+    for (final b in _blocks) {
+      if (b is _TextBlock) return (b as _TextBlock).ctrl;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -94,22 +129,27 @@ class _EntryScreenState extends State<EntryScreen> {
     _entryId = widget.entry?['id'] as String?;
     final tpl = widget.entry == null ? widget.template : null;
     _title = TextEditingController(text: widget.entry?['title'] ?? tpl?.title ?? '');
-    _body  = TextEditingController(text: widget.entry?['body'] ?? tpl?.body ?? '');
-    _mood  = widget.entry?['mood'] ?? tpl?.mood ?? '';
+    _mood = widget.entry?['mood'] ?? tpl?.mood ?? '';
     final tagsRaw = widget.entry?['tags'] as String? ?? '';
     _tags = tagsRaw.isNotEmpty
         ? tagsRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
         : [];
     final lu = widget.entry?['locked_until'] as String?;
-    if (lu != null && lu.isNotEmpty) {
-      _lockedUntil = DateTime.tryParse(lu);
-    }
+    if (lu != null && lu.isNotEmpty) _lockedUntil = DateTime.tryParse(lu);
     _paperStyle = widget.entry?['paper_style'] as String? ?? 'lined';
     _isFavorite = widget.entry?['is_favorite'] as bool? ?? false;
-    _themeId    = widget.entry?['theme_id'] as String?;
+    _themeId = widget.entry?['theme_id'] as String?;
     _showPrompt = _entryId == null && tpl == null;
+
+    // Existing entries open in read/preview mode; new entries open in edit mode
+    _previewMode = _isEdit;
+
+    _initBlocks(widget.entry?['body'] as String? ?? tpl?.body ?? '');
+    for (final b in _blocks) {
+      if (b is _TextBlock) (b as _TextBlock).ctrl.addListener(_mark);
+    }
     _title.addListener(_mark);
-    _body.addListener(_mark);
+
     if (_entryId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _loadPhotos();
@@ -118,23 +158,70 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  void _mark() { if (!_dirty && mounted) setState(() => _dirty = true); }
+  void _initBlocks(String rawBody) {
+    _blocks.clear();
+    if (rawBody.isNotEmpty && rawBody.trimLeft().startsWith('[')) {
+      try {
+        final decoded = jsonDecode(rawBody) as List;
+        for (final item in decoded) {
+          if (item is Map) {
+            if (item['type'] == 'text') {
+              _blocks.add(_TextBlock(item['content'] as String? ?? ''));
+            } else if (item['type'] == 'image') {
+              _blocks.add(_ImageBlock(
+                  {'id': item['photo_id'] as String? ?? '', '_pending': true}));
+            }
+          }
+        }
+        if (_blocks.any((b) => b is _TextBlock)) return;
+      } catch (_) {}
+      _blocks.clear();
+    }
+    _blocks.add(_TextBlock(rawBody));
+  }
+
+  String _serializeBody() {
+    final hasImages = _blocks.any(
+        (b) => b is _ImageBlock && !(b as _ImageBlock).isPending);
+    final textCount = _blocks.whereType<_TextBlock>().length;
+    if (!hasImages && textCount == 1) {
+      return _blocks.whereType<_TextBlock>().first.ctrl.text;
+    }
+    final list = <Map<String, dynamic>>[];
+    for (final b in _blocks) {
+      if (b is _TextBlock) {
+        list.add({'type': 'text', 'content': (b as _TextBlock).ctrl.text});
+      } else if (b is _ImageBlock && !(b as _ImageBlock).isPending) {
+        list.add({'type': 'image', 'photo_id': (b as _ImageBlock).photo['id'] as String? ?? ''});
+      }
+    }
+    return jsonEncode(list);
+  }
+
+  void _mark() {
+    if (!_dirty && mounted) setState(() => _dirty = true);
+  }
 
   @override
   void dispose() {
     _title.dispose();
-    _body.dispose();
     _tagController.dispose();
-    for (final c in _captionControllers) { c.dispose(); }
+    for (final b in _blocks) {
+      if (b is _TextBlock) (b as _TextBlock).dispose();
+      else if (b is _ImageBlock) (b as _ImageBlock).dispose();
+    }
     _recordTimer?.cancel();
     if (_recording) _recorder.cancel();
     super.dispose();
   }
 
-  // ── Tag helpers ────────────────────────────────────────────────────────────
+  // ── Tag helpers ───────────────────────────────────────────────────────────
 
   void _addTag(String raw) {
-    final parts = raw.split(',').map((s) => s.trim().replaceAll('#', '')).where((s) => s.isNotEmpty);
+    final parts = raw
+        .split(',')
+        .map((s) => s.trim().replaceAll('#', ''))
+        .where((s) => s.isNotEmpty);
     setState(() {
       for (final tag in parts) {
         if (!_tags.contains(tag)) _tags.add(tag);
@@ -144,56 +231,79 @@ class _EntryScreenState extends State<EntryScreen> {
     _tagController.clear();
   }
 
-  void _removeTag(String tag) => setState(() { _tags.remove(tag); _dirty = true; });
+  void _removeTag(String tag) =>
+      setState(() { _tags.remove(tag); _dirty = true; });
 
   String get _tagsString => _tags.join(',');
 
   int get _wordCount {
-    final t = _body.text.trim();
-    return t.isEmpty ? 0 : t.split(RegExp(r'\s+')).length;
+    int count = 0;
+    for (final b in _blocks) {
+      if (b is _TextBlock) {
+        final t = (b as _TextBlock).ctrl.text.trim();
+        if (t.isNotEmpty) count += t.split(RegExp(r'\s+')).length;
+      }
+    }
+    return count;
   }
 
   PaperStyle _toPaperStyle() => switch (_paperStyle) {
-    'dotted' => PaperStyle.dotted,
-    'grid'   => PaperStyle.grid,
-    'plain'  => PaperStyle.plain,
-    _        => PaperStyle.lined,
-  };
+        'dotted' => PaperStyle.dotted,
+        'grid' => PaperStyle.grid,
+        'plain' => PaperStyle.plain,
+        _ => PaperStyle.lined,
+      };
 
-  // ── Photo helpers ──────────────────────────────────────────────────────────
+  // ── Block / photo helpers ─────────────────────────────────────────────────
 
   Uint8List _base64ToBytes(String dataUrl) {
     final comma = dataUrl.indexOf(',');
     return base64Decode(comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl);
   }
 
-  void _initCaptionControllers() {
-    for (final c in _captionControllers) c.dispose();
-    _captionControllers = _photos
-        .map((p) => TextEditingController(text: p['caption'] as String? ?? ''))
-        .toList();
-  }
-
   Future<void> _loadPhotos() async {
     if (_entryId == null) return;
     try {
       final photos = await ApiService.getPhotos(_entryId!);
-      if (mounted) {
-        setState(() {
-          _photos = photos;
-          _initCaptionControllers();
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        final photoMap = {for (final p in photos) p['id'] as String: p};
+
+        // Resolve pending image blocks with real photo data
+        for (int i = 0; i < _blocks.length; i++) {
+          final b = _blocks[i];
+          if (b is _ImageBlock && b.isPending) {
+            final id = b.photo['id'] as String;
+            b.dispose();
+            final data = photoMap[id];
+            if (data != null) {
+              _blocks[i] = _ImageBlock(data);
+            } else {
+              _blocks.removeAt(i--);
+            }
+          }
+        }
+
+        // Append photos not referenced in any block (backward compat)
+        final referenced = _blocks
+            .whereType<_ImageBlock>()
+            .map((b) => b.photo['id'] as String)
+            .toSet();
+        for (final p in photos) {
+          if (!referenced.contains(p['id'] as String)) {
+            _blocks.add(_ImageBlock(p));
+          }
+        }
+      });
     } catch (_) {}
   }
 
-  // Auto-save the entry so we get an ID before uploading a photo
   Future<bool> _ensureSaved() async {
     if (_entryId != null) return true;
     try {
       final created = await ApiService.createEntry(
         title: _title.text,
-        body: _body.text,
+        body: _serializeBody(),
         mood: _mood,
         tags: _tagsString,
         lockedUntil: _lockedUntil?.toUtc().toIso8601String(),
@@ -201,7 +311,9 @@ class _EntryScreenState extends State<EntryScreen> {
         isFavorite: _isFavorite,
         themeId: _themeId ?? '',
       );
-      if (mounted) setState(() { _entryId = created['id'] as String; _dirty = false; });
+      if (mounted) {
+        setState(() { _entryId = created['id'] as String; _dirty = false; });
+      }
       return true;
     } catch (e) {
       if (mounted) {
@@ -215,12 +327,9 @@ class _EntryScreenState extends State<EntryScreen> {
 
   Future<void> _pickPhoto() async {
     if (_uploading) return;
-
-    // Open file picker directly in the user gesture (browser blocks deferred opens)
     final input = html.FileUploadInputElement()
       ..accept = 'image/*'
       ..click();
-
     await input.onChange.first;
     if (input.files == null || input.files!.isEmpty) return;
 
@@ -236,13 +345,38 @@ class _EntryScreenState extends State<EntryScreen> {
     setState(() => _uploading = true);
     try {
       final photo = await ApiService.uploadPhoto(_entryId!, bytes, htmlFile.name);
-      if (mounted) {
-        setState(() {
-          _photos.add(photo);
-          _captionControllers.add(
-            TextEditingController(text: photo['caption'] as String? ?? ''));
-        });
+      if (!mounted) return;
+
+      // Insert after the last focused text block
+      int insertAt = _blocks.length;
+      for (int i = _lastFocusedIdx; i >= 0; i--) {
+        if (i < _blocks.length && _blocks[i] is _TextBlock) {
+          insertAt = i + 1;
+          break;
+        }
       }
+
+      setState(() {
+        _blocks.insert(insertAt, _ImageBlock(photo));
+        // Ensure a text block follows the new image
+        final afterIdx = insertAt + 1;
+        if (afterIdx >= _blocks.length || _blocks[afterIdx] is _ImageBlock) {
+          final tb = _TextBlock('');
+          tb.ctrl.addListener(_mark);
+          _blocks.insert(afterIdx, tb);
+        }
+        _dirty = true;
+      });
+
+      // Move focus to the text block after the image
+      final focusIdx = insertAt + 1;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (focusIdx < _blocks.length && _blocks[focusIdx] is _TextBlock) {
+          (_blocks[focusIdx] as _TextBlock).focusNode.requestFocus();
+          setState(() => _lastFocusedIdx = focusIdx);
+        }
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -254,14 +388,38 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  Future<void> _deletePhoto(String photoId, int idx) async {
+  Future<void> _removeImageBlock(int blockIdx) async {
+    if (blockIdx < 0 || blockIdx >= _blocks.length) return;
+    final block = _blocks[blockIdx];
+    if (block is! _ImageBlock) return;
+    final photoId = block.photo['id'] as String;
     try {
       await ApiService.deletePhoto(photoId);
       if (mounted) {
         setState(() {
-          _captionControllers[idx].dispose();
-          _captionControllers.removeAt(idx);
-          _photos.removeAt(idx);
+          block.dispose();
+          _blocks.removeAt(blockIdx);
+          // Merge adjacent text blocks that are now next to each other
+          if (blockIdx > 0 &&
+              blockIdx < _blocks.length &&
+              _blocks[blockIdx - 1] is _TextBlock &&
+              _blocks[blockIdx] is _TextBlock) {
+            final above = _blocks[blockIdx - 1] as _TextBlock;
+            final below = _blocks[blockIdx] as _TextBlock;
+            final combined = [above.ctrl.text, below.ctrl.text]
+                .where((s) => s.isNotEmpty)
+                .join('\n\n');
+            above.ctrl.text = combined;
+            below.dispose();
+            _blocks.removeAt(blockIdx);
+          }
+          // Always keep at least one text block
+          if (!_blocks.any((b) => b is _TextBlock)) {
+            final tb = _TextBlock('');
+            tb.ctrl.addListener(_mark);
+            _blocks.add(tb);
+          }
+          _dirty = true;
         });
       }
     } catch (e) {
@@ -273,24 +431,51 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  Future<void> _updatePhotoLayout(String photoId, int idx,
+  Future<void> _updateImageLayout(int blockIdx,
       {String? widthPct, String? align}) async {
-    if (widthPct != null) setState(() => _photos[idx]['width_pct'] = widthPct);
-    if (align != null)    setState(() => _photos[idx]['align']     = align);
+    if (blockIdx < 0 ||
+        blockIdx >= _blocks.length ||
+        _blocks[blockIdx] is! _ImageBlock) return;
+    final block = _blocks[blockIdx] as _ImageBlock;
+    if (widthPct != null) setState(() => block.photo['width_pct'] = widthPct);
+    if (align != null) setState(() => block.photo['align'] = align);
     try {
-      await ApiService.updatePhoto(photoId, widthPct: widthPct, align: align);
+      await ApiService.updatePhoto(block.photo['id'] as String,
+          widthPct: widthPct, align: align);
     } catch (_) {}
   }
 
-  Future<void> _saveCaption(String photoId, int idx) async {
+  Future<void> _saveImageCaption(int blockIdx) async {
+    if (blockIdx < 0 ||
+        blockIdx >= _blocks.length ||
+        _blocks[blockIdx] is! _ImageBlock) return;
+    final block = _blocks[blockIdx] as _ImageBlock;
     try {
-      final caption = _captionControllers[idx].text;
-      await ApiService.updatePhoto(photoId, caption: caption);
-      if (mounted) setState(() => _photos[idx]['caption'] = caption);
+      final caption = block.captionCtrl.text;
+      await ApiService.updatePhoto(block.photo['id'] as String, caption: caption);
+      if (mounted) setState(() => block.photo['caption'] = caption);
     } catch (_) {}
   }
 
-  // ── Voice memo helpers ──────────────────────────────────────────────────────
+  void _moveBlockUp(int blockIdx) {
+    if (blockIdx <= 0 || blockIdx >= _blocks.length) return;
+    setState(() {
+      final temp = _blocks[blockIdx];
+      _blocks[blockIdx] = _blocks[blockIdx - 1];
+      _blocks[blockIdx - 1] = temp;
+    });
+  }
+
+  void _moveBlockDown(int blockIdx) {
+    if (blockIdx >= _blocks.length - 1) return;
+    setState(() {
+      final temp = _blocks[blockIdx];
+      _blocks[blockIdx] = _blocks[blockIdx + 1];
+      _blocks[blockIdx + 1] = temp;
+    });
+  }
+
+  // ── Voice memo helpers ────────────────────────────────────────────────────
 
   Future<void> _loadVoiceMemos() async {
     if (_entryId == null) return;
@@ -354,82 +539,104 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  // ── Markdown formatting helpers ────────────────────────────────────────────
+  // ── Markdown helpers ──────────────────────────────────────────────────────
 
   void _wrapSelection(String before, String after) {
-    final sel = _body.selection;
+    final ctrl = _focusedCtrl;
+    if (ctrl == null) return;
+    final sel = ctrl.selection;
     if (!sel.isValid) return;
-    final text = _body.text;
+    final text = ctrl.text;
     final start = sel.start < 0 ? text.length : sel.start;
     final end = sel.end < 0 ? text.length : sel.end;
     final selected = text.substring(start, end);
     final newText = text.replaceRange(start, end, '$before$selected$after');
-    _body.value = TextEditingValue(
+    ctrl.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: start + before.length + selected.length + after.length),
+      selection: TextSelection.collapsed(
+          offset: start + before.length + selected.length + after.length),
     );
     _dirty = true;
   }
 
   void _insertLinePrefix(String prefix) {
-    final sel = _body.selection;
-    final text = _body.text;
+    final ctrl = _focusedCtrl;
+    if (ctrl == null) return;
+    final sel = ctrl.selection;
+    final text = ctrl.text;
     final cursor = sel.start < 0 ? text.length : sel.start;
     final lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
-    final newText = text.substring(0, lineStart) + prefix + text.substring(lineStart);
-    _body.value = TextEditingValue(
+    final newText =
+        text.substring(0, lineStart) + prefix + text.substring(lineStart);
+    ctrl.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: cursor + prefix.length),
+      selection:
+          TextSelection.collapsed(offset: cursor + prefix.length),
     );
     _dirty = true;
   }
 
-  // ── Save / Delete ──────────────────────────────────────────────────────────
+  // ── Save / Delete ─────────────────────────────────────────────────────────
 
   Future<void> _pickSealDate() async {
     final t = _t;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _lockedUntil ?? DateTime.now().add(const Duration(days: 30)),
+      initialDate:
+          _lockedUntil ?? DateTime.now().add(const Duration(days: 30)),
       firstDate: DateTime.now().add(const Duration(days: 1)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
       builder: (ctx, child) => Theme(
         data: ThemeData.dark().copyWith(
-          colorScheme: ColorScheme.dark(primary: t.accent, surface: t.paper),
+          colorScheme:
+              ColorScheme.dark(primary: t.accent, surface: t.paper),
           dialogTheme: DialogThemeData(backgroundColor: t.paper),
         ),
         child: child!,
       ),
     );
-    if (picked != null) setState(() { _lockedUntil = picked; _dirty = true; });
+    if (picked != null) {
+      setState(() { _lockedUntil = picked; _dirty = true; });
+    }
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
       // Flush pending captions
-      for (var i = 0; i < _photos.length; i++) {
-        final typed   = _captionControllers[i].text;
-        final stored  = _photos[i]['caption'] as String? ?? '';
-        if (typed != stored) {
-          await ApiService.updatePhoto(_photos[i]['id'] as String, caption: typed);
+      for (final b in _blocks) {
+        if (b is _ImageBlock && !b.isPending) {
+          final typed = b.captionCtrl.text;
+          final stored = b.photo['caption'] as String? ?? '';
+          if (typed != stored) {
+            await ApiService.updatePhoto(b.photo['id'] as String,
+                caption: typed);
+          }
         }
       }
 
+      final body = _serializeBody();
       final luStr = _lockedUntil?.toUtc().toIso8601String();
       if (_entryId != null) {
         await ApiService.updateEntry(
           _entryId!,
-          title: _title.text, body: _body.text, mood: _mood, tags: _tagsString,
+          title: _title.text,
+          body: body,
+          mood: _mood,
+          tags: _tagsString,
           lockedUntil: luStr,
-          clearLock: _lockedUntil == null && (widget.entry?['locked_until'] as String?)?.isNotEmpty == true,
+          clearLock: _lockedUntil == null &&
+              (widget.entry?['locked_until'] as String?)?.isNotEmpty == true,
           paperStyle: _paperStyle,
           isFavorite: _isFavorite,
           themeId: _themeId ?? '',
         );
       } else {
         final created = await ApiService.createEntry(
-          title: _title.text, body: _body.text, mood: _mood, tags: _tagsString,
+          title: _title.text,
+          body: body,
+          mood: _mood,
+          tags: _tagsString,
           lockedUntil: luStr,
           paperStyle: _paperStyle,
           isFavorite: _isFavorite,
@@ -458,10 +665,13 @@ class _EntryScreenState extends State<EntryScreen> {
         title: Text('Delete entry?', style: TextStyle(color: t.heading)),
         content: Text('This cannot be undone.', style: TextStyle(color: t.ink)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
               child: Text('Cancel', style: TextStyle(color: t.muted))),
-          TextButton(onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete', style: TextStyle(color: Colors.redAccent))),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete',
+                  style: TextStyle(color: Colors.redAccent))),
         ],
       ),
     );
@@ -478,7 +688,7 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -489,18 +699,21 @@ class _EntryScreenState extends State<EntryScreen> {
         backgroundColor: t.appBarBg,
         foregroundColor: t.appBarFg,
         title: Text(
-          _isEdit ? 'Edit Entry' : 'New Entry',
+          _isEdit ? 'Journal Entry' : 'New Entry',
           style: GoogleFonts.cinzelDecorative(
               color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w500),
         ),
         actions: [
           IconButton(
             icon: Icon(
-              _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              _isFavorite
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
               color: _isFavorite ? const Color(0xFFf48fb1) : t.appBarFg,
               size: 20,
             ),
-            onPressed: () => setState(() { _isFavorite = !_isFavorite; _dirty = true; }),
+            onPressed: () =>
+                setState(() { _isFavorite = !_isFavorite; _dirty = true; }),
             tooltip: _isFavorite ? 'Unfavorite' : 'Favorite',
           ),
           if (_isEdit)
@@ -508,17 +721,30 @@ class _EntryScreenState extends State<EntryScreen> {
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
               onPressed: _delete,
             ),
-          if (_dirty || !_isEdit)
-            _saving
-                ? Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: SizedBox(width: 20, height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: t.appBarFg)),
-                  )
-                : IconButton(
-                    icon: Icon(Icons.check_rounded, color: t.appBarFg),
-                    onPressed: _save, tooltip: 'Save',
-                  ),
+          // Edit button — only shown in read/preview mode for existing entries
+          if (_previewMode && _isEdit)
+            IconButton(
+              icon: Icon(Icons.edit_rounded, color: t.appBarFg, size: 20),
+              tooltip: 'Edit entry',
+              onPressed: () => setState(() => _previewMode = false),
+            ),
+          // Save button — shown in edit mode when there are unsaved changes
+          if (!_previewMode || !_isEdit)
+            if (_dirty || !_isEdit)
+              _saving
+                  ? Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: t.appBarFg)),
+                    )
+                  : IconButton(
+                      icon: Icon(Icons.check_rounded, color: t.appBarFg),
+                      onPressed: _save,
+                      tooltip: 'Save',
+                    ),
         ],
       ),
       body: LayoutBuilder(
@@ -530,10 +756,264 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  // ── Wide layout ────────────────────────────────────────────────────────────
+  // ── Block list ────────────────────────────────────────────────────────────
 
-  Widget _wideLayout(dynamic t) {
-    final moodColor = _mood.isNotEmpty ? (_moodColors[_mood] ?? t.accent) : null;
+  List<Widget> _buildBlockList(PaperTheme t, {required double fontSize}) {
+    final widgets = <Widget>[];
+    for (int i = 0; i < _blocks.length; i++) {
+      final b = _blocks[i];
+      if (b is _TextBlock) {
+        if (_previewMode) {
+          if (b.ctrl.text.isNotEmpty) {
+            widgets.add(Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: MarkdownBody(
+                data: b.ctrl.text,
+                styleSheet: MarkdownStyleSheet(
+                  p: GoogleFonts.lora(
+                      color: t.ink, fontSize: fontSize, height: 1.95),
+                  h1: GoogleFonts.cormorant(
+                      color: t.heading,
+                      fontSize: fontSize + 8,
+                      fontWeight: FontWeight.w700),
+                  h2: GoogleFonts.cormorant(
+                      color: t.heading,
+                      fontSize: fontSize + 4,
+                      fontWeight: FontWeight.w600),
+                  listBullet: GoogleFonts.lora(
+                      color: t.ink, fontSize: fontSize),
+                  strong: GoogleFonts.lora(
+                      color: t.ink, fontWeight: FontWeight.w800),
+                  em: GoogleFonts.lora(
+                      color: t.ink, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ));
+          }
+        } else {
+          widgets.add(Focus(
+            onFocusChange: (focused) {
+              if (focused) setState(() => _lastFocusedIdx = i);
+            },
+            child: TextField(
+              controller: b.ctrl,
+              focusNode: b.focusNode,
+              maxLines: null,
+              textAlignVertical: TextAlignVertical.top,
+              style: GoogleFonts.lora(
+                  color: t.ink, fontSize: fontSize, height: 1.95),
+              decoration: InputDecoration(
+                hintText: i == 0 ? 'Write your thoughts…' : '',
+                hintStyle: GoogleFonts.lora(
+                    color: t.muted.withValues(alpha: 0.38),
+                    fontSize: fontSize,
+                    fontStyle: FontStyle.italic),
+                border: InputBorder.none,
+              ),
+            ),
+          ));
+        }
+      } else if (b is _ImageBlock && !b.isPending) {
+        widgets.add(_imageBlockWidget(b, i, t));
+      }
+    }
+    return widgets;
+  }
+
+  Widget _imageBlockWidget(_ImageBlock block, int blockIdx, PaperTheme t) {
+    final photo = block.photo;
+    final pct = int.tryParse(photo['width_pct'] as String? ?? '100') ?? 100;
+    final align = photo['align'] as String? ?? 'center';
+    final data = photo['data'] as String? ?? '';
+
+    final crossAlign = switch (align) {
+      'left' => CrossAxisAlignment.start,
+      'right' => CrossAxisAlignment.end,
+      _ => CrossAxisAlignment.center,
+    };
+    final captionAlign = switch (align) {
+      'left' => TextAlign.left,
+      'right' => TextAlign.right,
+      _ => TextAlign.center,
+    };
+    final alignBtns = <(String, IconData)>[
+      ('left', Icons.format_align_left_rounded),
+      ('center', Icons.format_align_center_rounded),
+      ('right', Icons.format_align_right_rounded),
+    ];
+
+    return LayoutBuilder(builder: (ctx, constraints) {
+      final imgW = constraints.maxWidth * pct / 100;
+      final bytes = _base64ToBytes(data);
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          crossAxisAlignment: crossAlign,
+          children: [
+            // Move up / down controls
+            if (!_previewMode)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (blockIdx > 0)
+                    _moveBtn(Icons.keyboard_arrow_up_rounded,
+                        () => _moveBlockUp(blockIdx), t),
+                  if (blockIdx < _blocks.length - 1)
+                    _moveBtn(Icons.keyboard_arrow_down_rounded,
+                        () => _moveBlockDown(blockIdx), t),
+                ]),
+              ),
+            const SizedBox(height: 4),
+            // Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.memory(bytes, width: imgW, fit: BoxFit.cover),
+            ),
+            const SizedBox(height: 8),
+            // Controls (edit mode only)
+            if (!_previewMode)
+              SizedBox(
+                width: imgW,
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    // Width presets
+                    ...['25', '50', '75', '100'].map((p) {
+                      final sel = pct == int.parse(p);
+                      return GestureDetector(
+                        onTap: () =>
+                            _updateImageLayout(blockIdx, widthPct: p),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: sel
+                                ? t.accent.withValues(alpha: 0.15)
+                                : t.bg,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                                color: sel ? t.accent : t.border,
+                                width: sel ? 1.2 : 0.6),
+                          ),
+                          child: Text('$p%',
+                              style: TextStyle(
+                                  color: sel ? t.accent : t.muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      );
+                    }),
+                    Container(
+                        width: 1,
+                        height: 22,
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 2),
+                        color: t.border),
+                    // Align buttons (only when not full width)
+                    if (pct < 100)
+                      ...alignBtns.map((a) {
+                        final sel = align == a.$1;
+                        return GestureDetector(
+                          onTap: () =>
+                              _updateImageLayout(blockIdx, align: a.$1),
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: sel
+                                  ? t.accent.withValues(alpha: 0.15)
+                                  : t.bg,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: sel ? t.accent : t.border,
+                                  width: sel ? 1.2 : 0.6),
+                            ),
+                            child: Icon(a.$2,
+                                size: 15,
+                                color: sel ? t.accent : t.muted),
+                          ),
+                        );
+                      }),
+                    if (pct < 100)
+                      Container(
+                          width: 1,
+                          height: 22,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          color: t.border),
+                    // Delete
+                    GestureDetector(
+                      onTap: () => _removeImageBlock(blockIdx),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                              color: Colors.redAccent.withValues(alpha: 0.3),
+                              width: 0.6),
+                        ),
+                        child: const Icon(Icons.delete_outline_rounded,
+                            size: 15, color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Caption
+            SizedBox(
+              width: imgW,
+              child: TextField(
+                controller: block.captionCtrl,
+                textAlign: captionAlign,
+                readOnly: _previewMode,
+                style: GoogleFonts.lora(
+                    color: t.muted,
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic),
+                decoration: InputDecoration(
+                  hintText: _previewMode ? '' : 'Add a caption…',
+                  hintStyle: TextStyle(
+                      color: t.muted.withValues(alpha: 0.4),
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic),
+                  border: InputBorder.none,
+                  contentPadding:
+                      const EdgeInsets.symmetric(vertical: 4),
+                ),
+                onSubmitted: (_) => _saveImageCaption(blockIdx),
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _moveBtn(IconData icon, VoidCallback onTap, PaperTheme t) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(left: 4, bottom: 4),
+        padding: const EdgeInsets.all(5),
+        decoration: BoxDecoration(
+          color: t.card,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: t.border, width: 0.6),
+        ),
+        child: Icon(icon, size: 14, color: t.muted),
+      ),
+    );
+  }
+
+  // ── Wide layout ───────────────────────────────────────────────────────────
+
+  Widget _wideLayout(PaperTheme t) {
+    final moodColor =
+        _mood.isNotEmpty ? (_moodColors[_mood] ?? t.accent) : null;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -589,7 +1069,9 @@ class _EntryScreenState extends State<EntryScreen> {
                   child: TextField(
                     controller: _title,
                     style: GoogleFonts.cormorant(
-                        color: t.heading, fontSize: 30, fontWeight: FontWeight.w700),
+                        color: t.heading,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w700),
                     decoration: InputDecoration(
                       hintText: 'Entry title…',
                       hintStyle: GoogleFonts.cormorant(
@@ -602,10 +1084,10 @@ class _EntryScreenState extends State<EntryScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Divider(color: t.border, thickness: 0.7, height: 1),
+                  child: Divider(
+                      color: t.border, thickness: 0.7, height: 1),
                 ),
                 const SizedBox(height: 4),
-                // Paper body + photos
                 Expanded(
                   child: Stack(
                     children: [
@@ -615,68 +1097,37 @@ class _EntryScreenState extends State<EntryScreen> {
                         spacing: 32,
                         child: SingleChildScrollView(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(28, 4, 28, 80),
+                            padding: const EdgeInsets.fromLTRB(
+                                28, 4, 28, 80),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               children: [
-                                _markdownToolbar(t),
-                                const SizedBox(height: 6),
-                                if (_previewMode)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 4),
-                                    child: MarkdownBody(
-                                      data: _body.text.isEmpty ? '*Nothing written yet…*' : _body.text,
-                                      styleSheet: MarkdownStyleSheet(
-                                        p: GoogleFonts.lora(color: t.ink, fontSize: 18, height: 1.95),
-                                        h1: GoogleFonts.cormorant(
-                                            color: t.heading, fontSize: 26, fontWeight: FontWeight.w700),
-                                        listBullet: GoogleFonts.lora(color: t.ink, fontSize: 18),
-                                        strong: GoogleFonts.lora(color: t.ink, fontWeight: FontWeight.w800),
-                                        em: GoogleFonts.lora(color: t.ink, fontStyle: FontStyle.italic),
-                                      ),
-                                    ),
-                                  )
-                                else
-                                  TextField(
-                                    controller: _body,
-                                    maxLines: null,
-                                    textAlignVertical: TextAlignVertical.top,
-                                    style: GoogleFonts.lora(
-                                        color: t.ink, fontSize: 18, height: 1.95),
-                                    decoration: InputDecoration(
-                                      hintText: 'Write your thoughts…',
-                                      hintStyle: GoogleFonts.lora(
-                                          color: t.muted.withValues(alpha: 0.38),
-                                          fontSize: 18,
-                                          fontStyle: FontStyle.italic),
-                                      border: InputBorder.none,
-                                    ),
-                                  ),
-                                if (_photos.isNotEmpty) ...[
-                                  const SizedBox(height: 16),
-                                  Divider(color: t.lines, thickness: 0.8),
-                                  ..._photos.asMap().entries.map(
-                                    (e) => _photoItem(e.value, t, e.key)),
-                                ],
+                                if (!_previewMode)
+                                  _markdownToolbar(t),
+                                if (!_previewMode)
+                                  const SizedBox(height: 6),
+                                ..._buildBlockList(t, fontSize: 18),
                                 _voiceMemosSection(t),
                               ],
                             ),
                           ),
                         ),
                       ),
-                      // Add photo / mic buttons
-                      Positioned(
-                        bottom: 14,
-                        right: 16,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _micButton(t),
-                            const SizedBox(width: 10),
-                            _addPhotoButton(t),
-                          ],
+                      // FAB buttons — edit mode only
+                      if (!_previewMode)
+                        Positioned(
+                          bottom: 14,
+                          right: 16,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _micButton(t),
+                              const SizedBox(width: 10),
+                              _addPhotoButton(t),
+                            ],
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -688,10 +1139,11 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  // ── Narrow layout ──────────────────────────────────────────────────────────
+  // ── Narrow layout ─────────────────────────────────────────────────────────
 
-  Widget _narrowLayout(dynamic t) {
-    final moodColor = _mood.isNotEmpty ? (_moodColors[_mood] ?? t.accent) : null;
+  Widget _narrowLayout(PaperTheme t) {
+    final moodColor =
+        _mood.isNotEmpty ? (_moodColors[_mood] ?? t.accent) : null;
     return Container(
       color: t.paper,
       child: Column(
@@ -708,24 +1160,34 @@ class _EntryScreenState extends State<EntryScreen> {
                 itemBuilder: (_, i) {
                   final m = _moods[i];
                   final sel = _mood == m;
-                  final mc = m.isNotEmpty ? (_moodColors[m] ?? t.accent) : t.muted;
+                  final mc = m.isNotEmpty
+                      ? (_moodColors[m] ?? t.accent)
+                      : t.muted;
                   return GestureDetector(
-                    onTap: () => setState(() { _mood = m; _dirty = true; }),
+                    onTap: () =>
+                        setState(() { _mood = m; _dirty = true; }),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 140),
-                      width: 36, height: 36,
+                      width: 36,
+                      height: 36,
                       margin: const EdgeInsets.only(right: 6),
                       decoration: BoxDecoration(
-                        color: sel ? mc.withValues(alpha: 0.18) : t.card,
+                        color: sel
+                            ? mc.withValues(alpha: 0.18)
+                            : t.card,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: sel ? mc : t.border, width: sel ? 1.5 : 0.6),
+                            color: sel ? mc : t.border,
+                            width: sel ? 1.5 : 0.6),
                       ),
                       child: Center(
                         child: m.isEmpty
-                            ? Icon(Icons.mood_outlined, size: 14,
+                            ? Icon(Icons.mood_outlined,
+                                size: 14,
                                 color: sel ? t.accent : t.muted)
-                            : Text(m, style: const TextStyle(fontSize: 16)),
+                            : Text(m,
+                                style:
+                                    const TextStyle(fontSize: 16)),
                       ),
                     ),
                   );
@@ -743,7 +1205,9 @@ class _EntryScreenState extends State<EntryScreen> {
             child: TextField(
               controller: _title,
               style: GoogleFonts.cormorant(
-                  color: t.heading, fontSize: 24, fontWeight: FontWeight.w700),
+                  color: t.heading,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 hintText: 'Entry title…',
                 hintStyle: GoogleFonts.cormorant(
@@ -756,10 +1220,10 @@ class _EntryScreenState extends State<EntryScreen> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Divider(color: t.border, thickness: 0.6, height: 1),
+            child: Divider(
+                color: t.border, thickness: 0.6, height: 1),
           ),
           const SizedBox(height: 4),
-          // Paper body + photos
           Expanded(
             child: Stack(
               children: [
@@ -779,71 +1243,45 @@ class _EntryScreenState extends State<EntryScreen> {
                               accentColor: t.accent,
                               inkColor: t.ink,
                               mutedColor: t.muted,
-                              onDismiss: () => setState(() => _showPrompt = false),
+                              onDismiss: () =>
+                                  setState(() => _showPrompt = false),
                               onUse: (p) {
-                                _body.text = p;
-                                _dirty = true;
-                                setState(() => _showPrompt = false);
+                                final ctrl = _focusedCtrl ??
+                                    (_blocks.isNotEmpty &&
+                                            _blocks.first is _TextBlock
+                                        ? (_blocks.first as _TextBlock)
+                                            .ctrl
+                                        : null);
+                                ctrl?.text = p;
+                                setState(() {
+                                  _dirty = true;
+                                  _showPrompt = false;
+                                });
                               },
                             ),
-                          _markdownToolbar(t),
-                          const SizedBox(height: 6),
-                          if (_previewMode)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: MarkdownBody(
-                                data: _body.text.isEmpty ? '*Nothing written yet…*' : _body.text,
-                                styleSheet: MarkdownStyleSheet(
-                                  p: GoogleFonts.lora(color: t.ink, fontSize: 17, height: 1.95),
-                                  h1: GoogleFonts.cormorant(
-                                      color: t.heading, fontSize: 24, fontWeight: FontWeight.w700),
-                                  listBullet: GoogleFonts.lora(color: t.ink, fontSize: 17),
-                                  strong: GoogleFonts.lora(color: t.ink, fontWeight: FontWeight.w800),
-                                  em: GoogleFonts.lora(color: t.ink, fontStyle: FontStyle.italic),
-                                ),
-                              ),
-                            )
-                          else
-                            TextField(
-                              controller: _body,
-                              maxLines: null,
-                              textAlignVertical: TextAlignVertical.top,
-                              style: GoogleFonts.lora(
-                                  color: t.ink, fontSize: 17, height: 1.95),
-                              decoration: InputDecoration(
-                                hintText: 'Write your thoughts…',
-                                hintStyle: GoogleFonts.lora(
-                                    color: t.muted.withValues(alpha: 0.38),
-                                    fontSize: 17,
-                                    fontStyle: FontStyle.italic),
-                                border: InputBorder.none,
-                              ),
-                            ),
-                          if (_photos.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            Divider(color: t.lines, thickness: 0.8),
-                            ..._photos.asMap().entries.map(
-                              (e) => _photoItem(e.value, t, e.key)),
-                          ],
+                          if (!_previewMode) _markdownToolbar(t),
+                          if (!_previewMode) const SizedBox(height: 6),
+                          ..._buildBlockList(t, fontSize: 17),
                           _voiceMemosSection(t),
                         ],
                       ),
                     ),
                   ),
                 ),
-                // Add photo / mic buttons
-                Positioned(
-                  bottom: 14,
-                  right: 12,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _micButton(t),
-                      const SizedBox(width: 8),
-                      _addPhotoButton(t),
-                    ],
+                // FAB buttons — edit mode only
+                if (!_previewMode)
+                  Positioned(
+                    bottom: 14,
+                    right: 12,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _micButton(t),
+                        const SizedBox(width: 8),
+                        _addPhotoButton(t),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -873,19 +1311,22 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  // ── Photo widgets ──────────────────────────────────────────────────────────
+  // ── Photo FAB ─────────────────────────────────────────────────────────────
 
-  Widget _addPhotoButton(dynamic t) {
+  Widget _addPhotoButton(PaperTheme t) {
     if (_uploading) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: t.accent,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+          ],
         ),
         child: const SizedBox(
-          width: 16, height: 16,
+          width: 16,
+          height: 16,
           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
         ),
       );
@@ -897,29 +1338,38 @@ class _EntryScreenState extends State<EntryScreen> {
         decoration: BoxDecoration(
           color: t.accent,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+          ],
         ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.add_photo_alternate_rounded, size: 16, color: Colors.white),
-          const SizedBox(width: 6),
-          const Text('Add Image',
-              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: const [
+          Icon(Icons.add_photo_alternate_rounded,
+              size: 16, color: Colors.white),
+          SizedBox(width: 6),
+          Text('Add Image',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700)),
         ]),
       ),
     );
   }
 
-  Widget _micButton(dynamic t) {
+  Widget _micButton(PaperTheme t) {
     if (_memoUploading) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: t.accent,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+          ],
         ),
         child: const SizedBox(
-          width: 16, height: 16,
+          width: 16,
+          height: 16,
           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
         ),
       );
@@ -934,13 +1384,18 @@ class _EntryScreenState extends State<EntryScreen> {
           decoration: BoxDecoration(
             color: Colors.redAccent,
             borderRadius: BorderRadius.circular(20),
-            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+            boxShadow: const [
+              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+            ],
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.stop_rounded, size: 16, color: Colors.white),
             const SizedBox(width: 6),
             Text('$m:${s.toString().padLeft(2, '0')}',
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
           ]),
         ),
       );
@@ -952,14 +1407,18 @@ class _EntryScreenState extends State<EntryScreen> {
         decoration: BoxDecoration(
           color: t.accent,
           shape: BoxShape.circle,
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
+          ],
         ),
         child: const Icon(Icons.mic_rounded, size: 16, color: Colors.white),
       ),
     );
   }
 
-  Widget _markdownToolbar(dynamic t) {
+  // ── Markdown toolbar ──────────────────────────────────────────────────────
+
+  Widget _markdownToolbar(PaperTheme t) {
     Widget btn(IconData icon, VoidCallback onTap, {String? tooltip}) {
       return Tooltip(
         message: tooltip ?? '',
@@ -983,30 +1442,45 @@ class _EntryScreenState extends State<EntryScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          btn(Icons.format_bold_rounded, () => _wrapSelection('**', '**'), tooltip: 'Bold'),
-          btn(Icons.format_italic_rounded, () => _wrapSelection('*', '*'), tooltip: 'Italic'),
-          btn(Icons.title_rounded, () => _insertLinePrefix('# '), tooltip: 'Heading'),
-          btn(Icons.format_list_bulleted_rounded, () => _insertLinePrefix('- '), tooltip: 'Bullet'),
+          btn(Icons.format_bold_rounded, () => _wrapSelection('**', '**'),
+              tooltip: 'Bold'),
+          btn(Icons.format_italic_rounded, () => _wrapSelection('*', '*'),
+              tooltip: 'Italic'),
+          btn(Icons.title_rounded, () => _insertLinePrefix('# '),
+              tooltip: 'Heading'),
+          btn(Icons.format_list_bulleted_rounded,
+              () => _insertLinePrefix('- '),
+              tooltip: 'Bullet'),
           const SizedBox(width: 4),
           GestureDetector(
             onTap: () => setState(() => _previewMode = !_previewMode),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: _previewMode ? t.accent.withValues(alpha: 0.15) : t.card,
+                color: _previewMode
+                    ? t.accent.withValues(alpha: 0.15)
+                    : t.card,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                    color: _previewMode ? t.accent : t.border, width: _previewMode ? 1.2 : 0.6),
+                    color: _previewMode ? t.accent : t.border,
+                    width: _previewMode ? 1.2 : 0.6),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(_previewMode ? Icons.edit_rounded : Icons.visibility_rounded,
-                    size: 13, color: _previewMode ? t.accent : t.muted),
+                Icon(
+                    _previewMode
+                        ? Icons.edit_rounded
+                        : Icons.visibility_rounded,
+                    size: 13,
+                    color: _previewMode ? t.accent : t.muted),
                 const SizedBox(width: 4),
-                Text(_previewMode ? 'Edit' : 'Preview',
-                    style: TextStyle(
-                        color: _previewMode ? t.accent : t.muted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  _previewMode ? 'Edit' : 'Preview',
+                  style: TextStyle(
+                      color: _previewMode ? t.accent : t.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600),
+                ),
               ]),
             ),
           ),
@@ -1015,7 +1489,9 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _voiceMemosSection(dynamic t) {
+  // ── Voice memos section ───────────────────────────────────────────────────
+
+  Widget _voiceMemosSection(PaperTheme t) {
     if (_voiceMemos.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1023,165 +1499,26 @@ class _EntryScreenState extends State<EntryScreen> {
         const SizedBox(height: 12),
         Text('VOICE MEMOS',
             style: TextStyle(
-                color: t.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                color: t.muted,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1)),
         const SizedBox(height: 8),
         ..._voiceMemos.asMap().entries.map((e) => VoiceMemoPlayer(
               dataUrl: e.value['data'] as String,
-              durationMs: int.tryParse('${e.value['duration_ms']}') ?? 0,
+              durationMs:
+                  int.tryParse('${e.value['duration_ms']}') ?? 0,
               theme: t,
-              onDelete: () => _deleteVoiceMemo(e.value['id'] as String, e.key),
+              onDelete: () =>
+                  _deleteVoiceMemo(e.value['id'] as String, e.key),
             )),
       ],
     );
   }
 
-  Widget _photoItem(Map<String, dynamic> photo, dynamic t, int idx) {
-    final pct     = int.tryParse(photo['width_pct'] as String? ?? '100') ?? 100;
-    final align   = photo['align'] as String? ?? 'center';
-    final data    = photo['data'] as String? ?? '';
-    final photoId = photo['id'] as String;
-    final bytes   = _base64ToBytes(data);
+  // ── Panel sub-widgets ─────────────────────────────────────────────────────
 
-    CrossAxisAlignment crossAlign;
-    switch (align) {
-      case 'left':  crossAlign = CrossAxisAlignment.start; break;
-      case 'right': crossAlign = CrossAxisAlignment.end;   break;
-      default:      crossAlign = CrossAxisAlignment.center;
-    }
-
-    TextAlign captionAlign;
-    switch (align) {
-      case 'left':  captionAlign = TextAlign.left;   break;
-      case 'right': captionAlign = TextAlign.right;  break;
-      default:      captionAlign = TextAlign.center;
-    }
-
-    final alignButtons = <(String, IconData)>[
-      ('left',   Icons.format_align_left_rounded),
-      ('center', Icons.format_align_center_rounded),
-      ('right',  Icons.format_align_right_rounded),
-    ];
-
-    return LayoutBuilder(builder: (ctx, constraints) {
-      final imgW = constraints.maxWidth * pct / 100;
-
-      return Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 4),
-        child: Column(
-          crossAxisAlignment: crossAlign,
-          children: [
-            // Image
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.memory(bytes, width: imgW, fit: BoxFit.cover),
-            ),
-            const SizedBox(height: 8),
-            // Control bar
-            SizedBox(
-              width: imgW,
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  // Width presets
-                  ...['25', '50', '75', '100'].map((p) {
-                    final sel = pct == int.parse(p);
-                    return GestureDetector(
-                      onTap: () => _updatePhotoLayout(photoId, idx, widthPct: p),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: sel ? t.accent.withValues(alpha: 0.15) : t.bg,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                              color: sel ? t.accent : t.border,
-                              width: sel ? 1.2 : 0.6),
-                        ),
-                        child: Text('$p%',
-                            style: TextStyle(
-                                color: sel ? t.accent : t.muted,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                    );
-                  }),
-                  // Separator
-                  Container(width: 1, height: 22,
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
-                      color: t.border),
-                  // Align buttons
-                  ...alignButtons.map((a) {
-                    final sel = align == a.$1;
-                    return GestureDetector(
-                      onTap: () => _updatePhotoLayout(photoId, idx, align: a.$1),
-                      child: Container(
-                        width: 30, height: 30,
-                        decoration: BoxDecoration(
-                          color: sel ? t.accent.withValues(alpha: 0.15) : t.bg,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                              color: sel ? t.accent : t.border,
-                              width: sel ? 1.2 : 0.6),
-                        ),
-                        child: Icon(a.$2, size: 15,
-                            color: sel ? t.accent : t.muted),
-                      ),
-                    );
-                  }),
-                  // Separator
-                  Container(width: 1, height: 22,
-                      margin: const EdgeInsets.symmetric(horizontal: 2),
-                      color: t.border),
-                  // Delete
-                  GestureDetector(
-                    onTap: () => _deletePhoto(photoId, idx),
-                    child: Container(
-                      width: 30, height: 30,
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                            color: Colors.redAccent.withValues(alpha: 0.3),
-                            width: 0.6),
-                      ),
-                      child: const Icon(Icons.delete_outline_rounded,
-                          size: 15, color: Colors.redAccent),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Caption
-            SizedBox(
-              width: imgW,
-              child: TextField(
-                controller: _captionControllers[idx],
-                textAlign: captionAlign,
-                style: GoogleFonts.lora(
-                    color: t.muted, fontSize: 13, fontStyle: FontStyle.italic),
-                decoration: InputDecoration(
-                  hintText: 'Add a caption…',
-                  hintStyle: TextStyle(
-                      color: t.muted.withValues(alpha: 0.4),
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                ),
-                onSubmitted: (_) => _saveCaption(photoId, idx),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      );
-    });
-  }
-
-  // ── Panel sub-widgets ──────────────────────────────────────────────────────
-
-  Widget _panelSection(dynamic t, String? label, Widget content) {
+  Widget _panelSection(PaperTheme t, String? label, Widget content) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1199,9 +1536,11 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _dateBlock(dynamic t) {
+  Widget _dateBlock(PaperTheme t) {
     final now = _isEdit
-        ? (DateTime.tryParse(widget.entry?['created_at'] as String? ?? '') ?? DateTime.now())
+        ? (DateTime.tryParse(
+                widget.entry?['created_at'] as String? ?? '') ??
+            DateTime.now())
         : DateTime.now();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1221,7 +1560,7 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _moodGrid(dynamic t) {
+  Widget _moodGrid(PaperTheme t) {
     return Wrap(
       spacing: 6,
       runSpacing: 6,
@@ -1232,17 +1571,19 @@ class _EntryScreenState extends State<EntryScreen> {
           onTap: () => setState(() { _mood = m; _dirty = true; }),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 130),
-            width: 36, height: 36,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: sel ? mc.withValues(alpha: 0.18) : t.paper,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: sel ? mc : t.border, width: sel ? 1.5 : 0.6),
+                  color: sel ? mc : t.border,
+                  width: sel ? 1.5 : 0.6),
             ),
             child: Center(
               child: m.isEmpty
-                  ? Icon(Icons.mood_outlined, size: 15,
-                      color: sel ? t.accent : t.muted)
+                  ? Icon(Icons.mood_outlined,
+                      size: 15, color: sel ? t.accent : t.muted)
                   : Text(m, style: const TextStyle(fontSize: 17)),
             ),
           ),
@@ -1251,29 +1592,34 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _paperStylePanel(dynamic t) {
+  Widget _paperStylePanel(PaperTheme t) {
     final styles = <(String, String, IconData)>[
-      ('plain',  'Plain',  Icons.view_stream_rounded),
-      ('lined',  'Lined',  Icons.reorder_rounded),
+      ('plain', 'Plain', Icons.view_stream_rounded),
+      ('lined', 'Lined', Icons.reorder_rounded),
       ('dotted', 'Dotted', Icons.apps_rounded),
-      ('grid',   'Grid',   Icons.grid_on_rounded),
+      ('grid', 'Grid', Icons.grid_on_rounded),
     ];
     return Wrap(
-      spacing: 6, runSpacing: 6,
+      spacing: 6,
+      runSpacing: 6,
       children: styles.map((s) {
         final sel = _paperStyle == s.$1;
         return GestureDetector(
           onTap: () => setState(() { _paperStyle = s.$1; _dirty = true; }),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
-              color: sel ? t.accent.withValues(alpha: 0.15) : t.paper,
+              color:
+                  sel ? t.accent.withValues(alpha: 0.15) : t.paper,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: sel ? t.accent : t.border, width: sel ? 1.2 : 0.6),
+                  color: sel ? t.accent : t.border,
+                  width: sel ? 1.2 : 0.6),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(s.$3, size: 12, color: sel ? t.accent : t.muted),
+              Icon(s.$3,
+                  size: 12, color: sel ? t.accent : t.muted),
               const SizedBox(width: 4),
               Text(s.$2,
                   style: TextStyle(
@@ -1287,25 +1633,35 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _themePanel(dynamic t) {
+  Widget _themePanel(PaperTheme t) {
     return Wrap(
-      spacing: 8, runSpacing: 8,
+      spacing: 8,
+      runSpacing: 8,
       children: [
         GestureDetector(
-          onTap: () => setState(() { _themeId = ''; _dirty = true; }),
+          onTap: () =>
+              setState(() { _themeId = ''; _dirty = true; }),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: (_themeId == null || _themeId!.isEmpty)
-                  ? t.accent.withValues(alpha: 0.15) : t.paper,
+                  ? t.accent.withValues(alpha: 0.15)
+                  : t.paper,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: (_themeId == null || _themeId!.isEmpty) ? t.accent : t.border,
-                  width: (_themeId == null || _themeId!.isEmpty) ? 1.2 : 0.6),
+                  color: (_themeId == null || _themeId!.isEmpty)
+                      ? t.accent
+                      : t.border,
+                  width: (_themeId == null || _themeId!.isEmpty)
+                      ? 1.2
+                      : 0.6),
             ),
             child: Text('Auto',
                 style: TextStyle(
-                    color: (_themeId == null || _themeId!.isEmpty) ? t.accent : t.muted,
+                    color: (_themeId == null || _themeId!.isEmpty)
+                        ? t.accent
+                        : t.muted,
                     fontSize: 12,
                     fontWeight: FontWeight.w600)),
           ),
@@ -1313,14 +1669,17 @@ class _EntryScreenState extends State<EntryScreen> {
         ...allPaperThemes.map((pt) {
           final sel = _themeId == pt.id;
           return GestureDetector(
-            onTap: () => setState(() { _themeId = pt.id; _dirty = true; }),
+            onTap: () =>
+                setState(() { _themeId = pt.id; _dirty = true; }),
             child: Container(
-              width: 26, height: 26,
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
                 color: pt.dot,
                 shape: BoxShape.circle,
                 border: Border.all(
-                    color: sel ? t.accent : Colors.transparent, width: 2.4),
+                    color: sel ? t.accent : Colors.transparent,
+                    width: 2.4),
               ),
               child: sel
                   ? const Icon(Icons.check, size: 13, color: Colors.white)
@@ -1332,13 +1691,14 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _tagsPanel(dynamic t) {
+  Widget _tagsPanel(PaperTheme t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_tags.isNotEmpty)
           Wrap(
-            spacing: 5, runSpacing: 5,
+            spacing: 5,
+            runSpacing: 5,
             children: _tags.map((tag) => _tagChip(tag, t)).toList(),
           ),
         const SizedBox(height: 6),
@@ -1347,23 +1707,26 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _tagChip(String tag, dynamic t) {
+  Widget _tagChip(String tag, PaperTheme t) {
     return InputChip(
       label: Text('#$tag',
-          style: TextStyle(color: t.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+          style: TextStyle(
+              color: t.accent, fontSize: 13, fontWeight: FontWeight.w600)),
       onDeleted: () => _removeTag(tag),
       deleteIcon: Icon(Icons.close, size: 11, color: t.muted),
       backgroundColor: t.accent.withValues(alpha: 0.1),
-      side: BorderSide(color: t.accent.withValues(alpha: 0.3), width: 0.6),
+      side: BorderSide(
+          color: t.accent.withValues(alpha: 0.3), width: 0.6),
       padding: const EdgeInsets.symmetric(horizontal: 2),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 
-  Widget _addTagField(dynamic t) {
+  Widget _addTagField(PaperTheme t) {
     return SizedBox(
-      width: 110, height: 30,
+      width: 110,
+      height: 30,
       child: TextField(
         controller: _tagController,
         style: TextStyle(color: t.ink, fontSize: 12),
@@ -1371,7 +1734,8 @@ class _EntryScreenState extends State<EntryScreen> {
           hintText: 'add tag',
           hintStyle: TextStyle(color: t.muted, fontSize: 12),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
           prefixText: '# ',
           prefixStyle: TextStyle(color: t.muted, fontSize: 12),
         ),
@@ -1381,7 +1745,7 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _promptPanel(dynamic t) {
+  Widget _promptPanel(PaperTheme t) {
     return WritingPromptCard(
       paperColor: t.card,
       accentColor: t.accent,
@@ -1389,24 +1753,29 @@ class _EntryScreenState extends State<EntryScreen> {
       mutedColor: t.muted,
       onDismiss: () => setState(() => _showPrompt = false),
       onUse: (p) {
-        _body.text = p;
-        _dirty = true;
-        setState(() => _showPrompt = false);
+        final ctrl = _focusedCtrl ??
+            (_blocks.isNotEmpty && _blocks.first is _TextBlock
+                ? (_blocks.first as _TextBlock).ctrl
+                : null);
+        ctrl?.text = p;
+        setState(() { _dirty = true; _showPrompt = false; });
       },
     );
   }
 
-  Widget _capsulePanel(dynamic t) {
+  Widget _capsulePanel(PaperTheme t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_lockedUntil != null) ...[
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: t.accent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: t.accent.withValues(alpha: 0.3), width: 0.6),
+              border: Border.all(
+                  color: t.accent.withValues(alpha: 0.3), width: 0.6),
             ),
             child: Row(children: [
               const Text('🔒', style: TextStyle(fontSize: 13)),
@@ -1414,11 +1783,15 @@ class _EntryScreenState extends State<EntryScreen> {
               Expanded(
                 child: Text(
                   'Seals ${DateFormat('MMM d, yyyy').format(_lockedUntil!)}',
-                  style: TextStyle(color: t.accent, fontSize: 11, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: t.accent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600),
                 ),
               ),
               GestureDetector(
-                onTap: () => setState(() { _lockedUntil = null; _dirty = true; }),
+                onTap: () =>
+                    setState(() { _lockedUntil = null; _dirty = true; }),
                 child: Icon(Icons.close, size: 13, color: t.muted),
               ),
             ]),
@@ -1428,7 +1801,8 @@ class _EntryScreenState extends State<EntryScreen> {
         GestureDetector(
           onTap: _pickSealDate,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
               color: t.paper,
               borderRadius: BorderRadius.circular(8),
@@ -1438,7 +1812,9 @@ class _EntryScreenState extends State<EntryScreen> {
               Icon(Icons.lock_outline, size: 13, color: t.muted),
               const SizedBox(width: 6),
               Text(
-                _lockedUntil == null ? 'Seal until a date…' : 'Change date',
+                _lockedUntil == null
+                    ? 'Seal until a date…'
+                    : 'Change date',
                 style: TextStyle(color: t.muted, fontSize: 11),
               ),
             ]),
@@ -1451,17 +1827,18 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _statsPanel(dynamic t, Color? moodColor) {
+  Widget _statsPanel(PaperTheme t, Color? moodColor) {
+    final imageCount =
+        _blocks.whereType<_ImageBlock>().where((b) => !b.isPending).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _statRow(t, 'Words', '$_wordCount'),
         const SizedBox(height: 4),
-        if (_mood.isNotEmpty)
-          _statRow(t, 'Mood', _mood),
-        if (_photos.isNotEmpty) ...[
+        if (_mood.isNotEmpty) _statRow(t, 'Mood', _mood),
+        if (imageCount > 0) ...[
           const SizedBox(height: 4),
-          _statRow(t, 'Images', '${_photos.length}'),
+          _statRow(t, 'Images', '$imageCount'),
         ],
         if (_voiceMemos.isNotEmpty) ...[
           const SizedBox(height: 4),
@@ -1471,13 +1848,18 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _statRow(dynamic t, String label, String value) {
+  Widget _statRow(PaperTheme t, String label, String value) {
     return Row(
       children: [
-        Text(label, style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 13)),
+        Text(label,
+            style: TextStyle(
+                color: t.ink.withValues(alpha: 0.65), fontSize: 13)),
         const Spacer(),
         Text(value,
-            style: TextStyle(color: t.heading, fontSize: 14, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                color: t.heading,
+                fontSize: 14,
+                fontWeight: FontWeight.w600)),
       ],
     );
   }

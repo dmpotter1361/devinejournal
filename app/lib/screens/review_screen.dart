@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/theme_service.dart';
+import '../utils/body_utils.dart';
 
 const _moodColors = {
   '✨': Color(0xFFf8df6e),
@@ -29,7 +30,7 @@ class ReviewScreen extends StatelessWidget {
   // ── Stat helpers ────────────────────────────────────────────────────────────
 
   int _wordCount(Map<String, dynamic> e) {
-    final body = (e['body'] as String? ?? '').trim();
+    final body = bodyToPlainText(e['body'] as String? ?? '').trim();
     if (body.isEmpty) return 0;
     return body.split(RegExp(r'\s+')).length;
   }

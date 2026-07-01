@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../services/theme_service.dart';
+import '../utils/body_utils.dart';
 
 class _GardenItem {
   final String text;
@@ -30,7 +31,7 @@ class GardenScreen extends StatelessWidget {
     final items = <_GardenItem>[];
     for (final e in gratitudeEntries) {
       final date = DateTime.tryParse(e['created_at'] as String? ?? '') ?? DateTime.now();
-      final body = (e['body'] as String? ?? '').trim();
+      final body = bodyToPlainText(e['body'] as String? ?? '').trim();
       final lines = body
           .split('\n')
           .map((l) => l.replaceFirst(RegExp(r'^\d+\.\s*'), '').trim())

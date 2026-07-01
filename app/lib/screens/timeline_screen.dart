@@ -12,6 +12,7 @@ import '../utils/entry_templates.dart';
 import '../utils/pdf_export.dart';
 import '../widgets/star_field.dart';
 import '../services/passcode_service.dart';
+import '../utils/body_utils.dart';
 import 'entry_screen.dart';
 import 'calendar_screen.dart';
 import 'garden_screen.dart';
@@ -118,7 +119,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
     if (q.isNotEmpty) {
       list = list.where((e) {
         final title = (e['title'] as String? ?? '').toLowerCase();
-        final body  = (e['body']  as String? ?? '').toLowerCase();
+        final body  = bodyToPlainText(e['body'] as String? ?? '').toLowerCase();
         final tags  = (e['tags']  as String? ?? '').toLowerCase();
         return title.contains(q) || body.contains(q) || tags.contains(q);
       }).toList();
@@ -727,7 +728,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
     final date = DateTime.tryParse(entry['created_at'] as String? ?? '')?.toLocal();
     final yearsAgo = date != null ? DateTime.now().year - date.year : 0;
     final title = entry['title'] as String? ?? 'Untitled';
-    final body = entry['body'] as String? ?? '';
+    final body = bodyToPlainText(entry['body'] as String? ?? '');
     final preview = body.length > 100 ? '${body.substring(0, 100)}…' : body;
     final mood = entry['mood'] as String? ?? '';
     final moodColor = _moodColors[mood] ?? t.accent;
@@ -807,7 +808,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
     final year  = date != null ? DateFormat('yyyy').format(date.toLocal()) : '';
     final mood  = entry['mood'] as String? ?? '';
     final title = entry['title'] as String? ?? '';
-    final body  = entry['body'] as String? ?? '';
+    final body  = bodyToPlainText(entry['body'] as String? ?? '');
     final tagsRaw = entry['tags'] as String? ?? '';
     final tags  = tagsRaw.isNotEmpty
         ? tagsRaw.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).take(3).toList()
