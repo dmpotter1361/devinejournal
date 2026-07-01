@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; background: transparent; }
+
+  #editor-wrap { position: relative; padding: 0 4px; }
+
+  .ProseMirror {
+    outline: none;
+    min-height: 120px;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    line-height: 1.9;
+  }
+  .ProseMirror::after { content: ''; display: block; clear: both; }
+  .ProseMirror p { margin: 0 0 4px; }
+  .ProseMirror h1 { margin: 8px 0 4px; font-size: 1.6em; }
+  .ProseMirror h2 { margin: 6px 0 4px; font-size: 1.3em; }
+  .ProseMirror ul, .ProseMirror ol { padding-left: 1.4em; }
+  .ProseMirror p.is-empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted, #aaa);
+    opacity: 0.5;
+    pointer-events: none;
+    float: left;
+    font-style: italic;
+  }
+
+  /* Images */
+  .ProseMirror img {
+    max-width: 100%;
+    border-radius: 10px;
+    cursor: pointer;
+    display: block;
+  }
+  .ProseMirror img.float-left {
+    float: left;
+    display: block;
+    margin: 4px 18px 10px 0;
+  }
+  .ProseMirror img.float-right {
+    float: right;
+    display: block;
+    margin: 4px 0 10px 18px;
+  }
+  .ProseMirror img.img-selected {
+    outline: 2.5px solid var(--accent, #9b72cf);
+    outline-offset: 2px;
+  }
+
+  /* Image toolbar */
+  #img-toolbar {
+    display: none;
+    position: fixed;
+    background: #1a0a2e;
+    border-radius: 10px;
+    padding: 5px 8px;
+    gap: 4px;
+    align-items: center;
+    z-index: 9999;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  #img-toolbar button {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+  #img-toolbar button:hover { background: rgba(255,255,255,0.2); }
+  #img-toolbar button.active { background: var(--accent, #9b72cf); }
+  #img-toolbar .sep { width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 2px; }
+</style>
+</head>
+<body>
+<div id="editor-wrap">
+  <div id="editor"></div>
+</div>
+
+<div id="img-toolbar">
+  <button id="btn-float-left" onclick="setFloat('left')">◀ Float Left</button>
+  <button id="btn-inline"     onclick="setFloat('none')">■ Inline</button>
+  <button id="btn-float-right" onclick="setFloat('right')">Float Right ▶</button>
+  <div class="sep"></div>
+  <button onclick="removeSelectedImg()" style="color:#ff6b6b;">✕ Remove</button>
+</div>
+
+<script type="module">
+import { Editor } from 'https://esm.sh/@tiptap/core@2.11.7';
+import StarterKit from 'https://esm.sh/@tiptap/starter-kit@2.11.7';
+import Image from 'https://esm.sh/@tiptap/extension-image@2.11.7';
+import Placeholder from 'https://esm.sh/@tiptap/extension-placeholder@2.11.7';
+
+let editor;
+let selectedImg = null;
+const toolbar = document.getElementById('img-toolbar');
+
+editor = new Editor({
+  element: document.getElementById('editor'),
+  extensions: [
+    StarterKit,
+    Image.configure({ inline: false, allowBase64: true }),
+    Placeholder.configure({ placeholder: 'Write your thoughts…' }),
+  ],
+  content: '',
+  editable: true,
+  onUpdate() {
+    notifyParent();
+    notifyHeight();
+  },
+  onCreate() {
+    window.parent.postMessage({ type: 'ready' }, '*');
+    notifyHeight();
+  },
+});
+
+function notifyParent() {
+  window.parent.postMessage({
+    type: 'contentChanged',
+    html: editor.getHTML(),
+  }, '*');
+}
+
+function notifyHeight() {
+  const h = document.getElementById('editor-wrap').scrollHeight;
+  window.parent.postMessage({ type: 'heightChanged', height: h }, '*');
+}
+
+// ── Messages from Flutter ─────────────────────────────────────────────────────
+window.addEventListener('message', (e) => {
+  const msg = (typeof e.data === 'string') ? JSON.parse(e.data) : e.data;
+  if (!msg || !msg.type) return;
+
+  switch (msg.type) {
+    case 'setContent':
+      editor.commands.setContent(msg.data || '', false);
+      notifyHeight();
+      break;
+    case 'insertImage':
+      editor.chain().focus().setImage({ src: msg.data }).run();
+      break;
+    case 'setEditable':
+      editor.setEditable(msg.data);
+      break;
+    case 'applyTheme':
+      applyTheme(msg.data);
+      break;
+    case 'getContent':
+      window.parent.postMessage({ type: 'content', html: editor.getHTML() }, '*');
+      break;
+    case 'command':
+      switch (msg.cmd) {
+        case 'bold':       editor.chain().focus().toggleBold().run(); break;
+        case 'italic':     editor.chain().focus().toggleItalic().run(); break;
+        case 'heading':    editor.chain().focus().toggleHeading({ level: 2 }).run(); break;
+        case 'bulletList': editor.chain().focus().toggleBulletList().run(); break;
+      }
+      break;
+  }
+});
+
+// ── Image click → float toolbar ───────────────────────────────────────────────
+document.getElementById('editor').addEventListener('click', (e) => {
+  if (e.target.tagName === 'IMG') {
+    if (selectedImg) selectedImg.classList.remove('img-selected');
+    selectedImg = e.target;
+    selectedImg.classList.add('img-selected');
+    positionToolbar(e);
+    e.stopPropagation();
+  } else {
+    hideToolbar();
+  }
+});
+
+document.addEventListener('click', () => hideToolbar());
+document.addEventListener('scroll', () => hideToolbar());
+
+function positionToolbar(e) {
+  const imgRect = selectedImg.getBoundingClientRect();
+  toolbar.style.display = 'flex';
+
+  // Sync active state on buttons
+  const fl = selectedImg.classList.contains('float-left');
+  const fr = selectedImg.classList.contains('float-right');
+  document.getElementById('btn-float-left').classList.toggle('active', fl);
+  document.getElementById('btn-float-right').classList.toggle('active', fr);
+  document.getElementById('btn-inline').classList.toggle('active', !fl && !fr);
+
+  // Position below image, clamped to viewport
+  let left = imgRect.left;
+  let top = imgRect.bottom + 8;
+  const tbWidth = 300;
+  if (left + tbWidth > window.innerWidth) left = window.innerWidth - tbWidth - 8;
+  toolbar.style.left = Math.max(4, left) + 'px';
+  toolbar.style.top = top + 'px';
+}
+
+function hideToolbar() {
+  toolbar.style.display = 'none';
+  if (selectedImg) {
+    selectedImg.classList.remove('img-selected');
+    selectedImg = null;
+  }
+}
+
+window.setFloat = (dir) => {
+  if (!selectedImg) return;
+  selectedImg.classList.remove('float-left', 'float-right');
+  if (dir === 'left') selectedImg.classList.add('float-left');
+  if (dir === 'right') selectedImg.classList.add('float-right');
+  notifyParent();
+  notifyHeight();
+  // Re-show toolbar
+  if (selectedImg) positionToolbar({ target: selectedImg });
+};
+
+window.removeSelectedImg = () => {
+  if (!selectedImg) return;
+  selectedImg.remove();
+  hideToolbar();
+  notifyParent();
+  notifyHeight();
+};
+
+// ── Native browser resize on images ──────────────────────────────────────────
+// Browsers allow resize of images in contenteditable natively via selection handles.
+
+// ── Theme ────────────────────────────────────────────────────────────────────
+function applyTheme(t) {
+  if (!t) return;
+  document.body.style.setProperty('--accent', t.accent || '#9b72cf');
+  document.body.style.setProperty('--muted', t.muted || '#888');
+  const editor = document.getElementById('editor');
+  editor.style.color = t.ink || '#1a1a2e';
+  editor.style.fontFamily = t.font || 'Lora, Georgia, serif';
+  editor.style.fontSize = (t.fontSize || 20) + 'px';
+  editor.style.lineHeight = t.lineHeight || '1.9';
+}
+</script>
+</body>
+</html>

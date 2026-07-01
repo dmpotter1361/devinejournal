@@ -1,18 +1,20 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
 import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/theme_service.dart';
 import '../theme.dart';
+import '../utils/body_utils.dart';
 import '../utils/moon_phase.dart';
 import '../utils/entry_templates.dart';
 import '../utils/web_audio_recorder.dart';
 import '../widgets/ruled_paper.dart';
+import '../widgets/tiptap_editor.dart';
 import '../widgets/writing_prompt.dart';
 import '../widgets/voice_memo_player.dart';
 
@@ -41,44 +43,6 @@ const _moodColors = {
   '🌠': Color(0xFF7986cb),
 };
 
-// ── Document block model ──────────────────────────────────────────────────────
-
-class _TextBlock {
-  final TextEditingController ctrl;
-  final FocusNode focusNode;
-  _TextBlock(String text)
-      : ctrl = TextEditingController(text: text),
-        focusNode = FocusNode();
-  void dispose() {
-    ctrl.dispose();
-    focusNode.dispose();
-  }
-}
-
-class _ImageBlock {
-  Map<String, dynamic> photo;
-  final TextEditingController captionCtrl;
-  final TextEditingController sideTextCtrl;
-  String align;     // 'left' | 'center' | 'right'
-  double? widthPx;  // null = auto (full-width for center, ~42% for float)
-  final bool isPending;
-
-  _ImageBlock(Map<String, dynamic> p)
-      : photo = Map<String, dynamic>.from(p),
-        captionCtrl = TextEditingController(text: p['caption'] as String? ?? ''),
-        sideTextCtrl = TextEditingController(text: p['side_text'] as String? ?? ''),
-        align = p['align'] as String? ?? 'center',
-        widthPx = (p['width_px'] as num?)?.toDouble(),
-        isPending = (p['_pending'] as bool?) ?? false;
-
-  void dispose() {
-    captionCtrl.dispose();
-    sideTextCtrl.dispose();
-  }
-}
-
-// ── EntryScreen ───────────────────────────────────────────────────────────────
-
 class EntryScreen extends StatefulWidget {
   final Map<String, dynamic>? entry;
   final EntryTemplate? template;
@@ -103,9 +67,11 @@ class _EntryScreenState extends State<EntryScreen> {
   String? _themeId;
   String? _entryId;
 
-  // Block editor
-  final _blocks = <dynamic>[]; // List<_TextBlock | _ImageBlock>
-  int _lastFocusedIdx = 0;
+  // TipTap rich-text editor
+  final _tiptapCtrl = TipTapController();
+  bool _tiptapReady = false;
+  String _pendingHtml = '';
+  List<String> _pendingPhotoIds = [];
   bool _uploading = false;
 
   // Voice memos
@@ -123,16 +89,14 @@ class _EntryScreenState extends State<EntryScreen> {
           ? paperThemeById(_themeId!)
           : ThemeService.current;
 
-  TextEditingController? get _focusedCtrl {
-    final idx = _lastFocusedIdx;
-    if (idx >= 0 && idx < _blocks.length && _blocks[idx] is _TextBlock) {
-      return (_blocks[idx] as _TextBlock).ctrl;
-    }
-    for (final b in _blocks) {
-      if (b is _TextBlock) return (b as _TextBlock).ctrl;
-    }
-    return null;
+  int get _wordCount {
+    final text = bodyToPlainText(_tiptapCtrl.currentHtml);
+    if (text.trim().isEmpty) return 0;
+    return text.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
   }
+
+  int get _imageCount =>
+      RegExp(r'<img').allMatches(_tiptapCtrl.currentHtml).length;
 
   @override
   void initState() {
@@ -151,14 +115,19 @@ class _EntryScreenState extends State<EntryScreen> {
     _isFavorite = widget.entry?['is_favorite'] as bool? ?? false;
     _themeId = widget.entry?['theme_id'] as String?;
     _showPrompt = _entryId == null && tpl == null;
-
-    // Existing entries open in read/preview mode; new entries open in edit mode
     _previewMode = _isEdit;
 
-    _initBlocks(widget.entry?['body'] as String? ?? tpl?.body ?? '');
-    for (final b in _blocks) {
-      if (b is _TextBlock) (b as _TextBlock).ctrl.addListener(_mark);
-    }
+    _initContent(widget.entry?['body'] as String? ?? tpl?.body ?? '');
+
+    _tiptapCtrl.onChanged = (_) => _mark();
+    _tiptapCtrl.onReady = () {
+      if (!mounted) return;
+      setState(() => _tiptapReady = true);
+      _tiptapCtrl.setContent(_pendingHtml);
+      _tiptapCtrl.setEditable(!_previewMode);
+      _applyTipTapTheme();
+    };
+
     _title.addListener(_mark);
 
     if (_entryId != null) {
@@ -169,59 +138,39 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  void _initBlocks(String rawBody) {
-    _blocks.clear();
-    if (rawBody.isNotEmpty && rawBody.trimLeft().startsWith('[')) {
+  void _initContent(String rawBody) {
+    _pendingPhotoIds = [];
+    _pendingHtml = bodyToTipTapHtml(rawBody);
+    // Extract photo IDs from legacy JSON block format so _loadPhotos can inject them
+    if (rawBody.trimLeft().startsWith('[')) {
       try {
-        final decoded = jsonDecode(rawBody) as List;
-        for (final item in decoded) {
-          if (item is Map) {
-            if (item['type'] == 'text') {
-              _blocks.add(_TextBlock(item['content'] as String? ?? ''));
-            } else if (item['type'] == 'image') {
-              _blocks.add(_ImageBlock({
-                'id': item['photo_id'] as String? ?? '',
-                '_pending': true,
-                'align': item['align'] ?? 'center',
-                'width_px': item['width_px'],
-                'side_text': item['side_text'] ?? '',
-                'caption': item['caption'] ?? '',
-              }));
-            }
+        for (final b in jsonDecode(rawBody) as List) {
+          if (b is Map && b['type'] == 'image') {
+            _pendingPhotoIds.add(b['photo_id'] as String? ?? '');
           }
         }
-        if (_blocks.any((b) => b is _TextBlock)) return;
       } catch (_) {}
-      _blocks.clear();
     }
-    _blocks.add(_TextBlock(rawBody));
   }
 
-  String _serializeBody() {
-    final hasImages = _blocks.any(
-        (b) => b is _ImageBlock && !(b as _ImageBlock).isPending);
-    final textCount = _blocks.whereType<_TextBlock>().length;
-    if (!hasImages && textCount == 1) {
-      return _blocks.whereType<_TextBlock>().first.ctrl.text;
-    }
-    final list = <Map<String, dynamic>>[];
-    for (final b in _blocks) {
-      if (b is _TextBlock) {
-        list.add({'type': 'text', 'content': b.ctrl.text});
-      } else if (b is _ImageBlock && !b.isPending) {
-        final entry = <String, dynamic>{
-          'type': 'image',
-          'photo_id': b.photo['id'] as String? ?? '',
-          'align': b.align,
-        };
-        if (b.widthPx != null) entry['width_px'] = b.widthPx;
-        if (b.sideTextCtrl.text.isNotEmpty) entry['side_text'] = b.sideTextCtrl.text;
-        if (b.captionCtrl.text.isNotEmpty) entry['caption'] = b.captionCtrl.text;
-        list.add(entry);
-      }
-    }
-    return jsonEncode(list);
+  void _applyTipTapTheme([PaperTheme? theme]) {
+    final t = theme ?? _t;
+    _tiptapCtrl.applyTheme(
+      accent: _colorToHex(t.accent),
+      ink: _colorToHex(t.ink),
+      muted: _colorToHex(t.muted),
+      fontSize: 20,
+    );
   }
+
+  String _colorToHex(Color c) {
+    final r = (c.r * 255.0).round().clamp(0, 255).toRadixString(16).padLeft(2, '0');
+    final g = (c.g * 255.0).round().clamp(0, 255).toRadixString(16).padLeft(2, '0');
+    final b = (c.b * 255.0).round().clamp(0, 255).toRadixString(16).padLeft(2, '0');
+    return '#$r$g$b';
+  }
+
+  String _serializeBody() => _tiptapCtrl.currentHtml;
 
   void _mark() {
     if (!_dirty && mounted) setState(() => _dirty = true);
@@ -231,10 +180,6 @@ class _EntryScreenState extends State<EntryScreen> {
   void dispose() {
     _title.dispose();
     _tagController.dispose();
-    for (final b in _blocks) {
-      if (b is _TextBlock) (b as _TextBlock).dispose();
-      else if (b is _ImageBlock) (b as _ImageBlock).dispose();
-    }
     _recordTimer?.cancel();
     if (_recording) _recorder.cancel();
     super.dispose();
@@ -261,17 +206,6 @@ class _EntryScreenState extends State<EntryScreen> {
 
   String get _tagsString => _tags.join(',');
 
-  int get _wordCount {
-    int count = 0;
-    for (final b in _blocks) {
-      if (b is _TextBlock) {
-        final t = (b as _TextBlock).ctrl.text.trim();
-        if (t.isNotEmpty) count += t.split(RegExp(r'\s+')).length;
-      }
-    }
-    return count;
-  }
-
   PaperStyle _toPaperStyle() => switch (_paperStyle) {
         'dotted' => PaperStyle.dotted,
         'grid' => PaperStyle.grid,
@@ -279,61 +213,35 @@ class _EntryScreenState extends State<EntryScreen> {
         _ => PaperStyle.lined,
       };
 
-  // ── Block / photo helpers ─────────────────────────────────────────────────
-
-  Uint8List _base64ToBytes(String dataUrl) {
-    final comma = dataUrl.indexOf(',');
-    return base64Decode(comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl);
-  }
+  // ── Photo helpers ─────────────────────────────────────────────────────────
 
   Future<void> _loadPhotos() async {
     if (_entryId == null) return;
     try {
       final photos = await ApiService.getPhotos(_entryId!);
-      if (!mounted) return;
-      setState(() {
-        final photoMap = {for (final p in photos) p['id'] as String: p};
+      if (!mounted || photos.isEmpty) return;
 
-        // Resolve pending image blocks — preserve layout metadata from body JSON
-        for (int i = 0; i < _blocks.length; i++) {
-          final b = _blocks[i];
-          if (b is _ImageBlock && b.isPending) {
-            final id = b.photo['id'] as String;
-            final savedAlign = b.align;
-            final savedWidthPx = b.widthPx;
-            final savedSideText = b.sideTextCtrl.text;
-            final savedCaption = b.captionCtrl.text;
-            b.dispose();
-            final data = photoMap[id];
-            if (data != null) {
-              final merged = {
-                ...data,
-                'align': savedAlign,
-                if (savedWidthPx != null) 'width_px': savedWidthPx,
-                'side_text': savedSideText,
-                // prefer caption from body JSON (if set), else fall back to API
-                'caption': savedCaption.isNotEmpty
-                    ? savedCaption
-                    : (data['caption'] as String? ?? ''),
-              };
-              _blocks[i] = _ImageBlock(merged);
-            } else {
-              _blocks.removeAt(i--);
-            }
-          }
-        }
+      final photoMap = {for (final p in photos) p['id'] as String: p['data'] as String};
+      var html = _pendingHtml;
 
-        // Append photos not referenced in any block (backward compat)
-        final referenced = _blocks
-            .whereType<_ImageBlock>()
-            .map((b) => b.photo['id'] as String)
-            .toSet();
-        for (final p in photos) {
-          if (!referenced.contains(p['id'] as String)) {
-            _blocks.add(_ImageBlock(p));
-          }
+      // Inject photos from legacy block JSON in order
+      final referenced = <String>{};
+      for (final id in _pendingPhotoIds) {
+        final data = photoMap[id];
+        if (data != null) {
+          referenced.add(id);
+          html += '<img src="$data" />';
         }
-      });
+      }
+      // Append photos not referenced in body JSON (backward compat)
+      for (final p in photos) {
+        if (!referenced.contains(p['id'] as String)) {
+          html += '<img src="${p['data'] as String}" />';
+        }
+      }
+
+      setState(() => _pendingHtml = html);
+      if (_tiptapReady) _tiptapCtrl.setContent(html);
     } catch (_) {}
   }
 
@@ -385,37 +293,8 @@ class _EntryScreenState extends State<EntryScreen> {
     try {
       final photo = await ApiService.uploadPhoto(_entryId!, bytes, htmlFile.name);
       if (!mounted) return;
-
-      // Insert after the last focused text block
-      int insertAt = _blocks.length;
-      for (int i = _lastFocusedIdx; i >= 0; i--) {
-        if (i < _blocks.length && _blocks[i] is _TextBlock) {
-          insertAt = i + 1;
-          break;
-        }
-      }
-
-      setState(() {
-        _blocks.insert(insertAt, _ImageBlock(photo));
-        // Ensure a text block follows the new image
-        final afterIdx = insertAt + 1;
-        if (afterIdx >= _blocks.length || _blocks[afterIdx] is _ImageBlock) {
-          final tb = _TextBlock('');
-          tb.ctrl.addListener(_mark);
-          _blocks.insert(afterIdx, tb);
-        }
-        _dirty = true;
-      });
-
-      // Move focus to the text block after the image
-      final focusIdx = insertAt + 1;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (focusIdx < _blocks.length && _blocks[focusIdx] is _TextBlock) {
-          (_blocks[focusIdx] as _TextBlock).focusNode.requestFocus();
-          setState(() => _lastFocusedIdx = focusIdx);
-        }
-      });
+      _tiptapCtrl.insertImage(photo['data'] as String);
+      setState(() => _dirty = true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -425,67 +304,6 @@ class _EntryScreenState extends State<EntryScreen> {
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
-  }
-
-  Future<void> _removeImageBlock(int blockIdx) async {
-    if (blockIdx < 0 || blockIdx >= _blocks.length) return;
-    final block = _blocks[blockIdx];
-    if (block is! _ImageBlock) return;
-    final photoId = block.photo['id'] as String;
-    try {
-      await ApiService.deletePhoto(photoId);
-      if (mounted) {
-        setState(() {
-          block.dispose();
-          _blocks.removeAt(blockIdx);
-          // Merge adjacent text blocks that are now next to each other
-          if (blockIdx > 0 &&
-              blockIdx < _blocks.length &&
-              _blocks[blockIdx - 1] is _TextBlock &&
-              _blocks[blockIdx] is _TextBlock) {
-            final above = _blocks[blockIdx - 1] as _TextBlock;
-            final below = _blocks[blockIdx] as _TextBlock;
-            final combined = [above.ctrl.text, below.ctrl.text]
-                .where((s) => s.isNotEmpty)
-                .join('\n\n');
-            above.ctrl.text = combined;
-            below.dispose();
-            _blocks.removeAt(blockIdx);
-          }
-          // Always keep at least one text block
-          if (!_blocks.any((b) => b is _TextBlock)) {
-            final tb = _TextBlock('');
-            tb.ctrl.addListener(_mark);
-            _blocks.add(tb);
-          }
-          _dirty = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Delete failed: $e'), backgroundColor: Colors.redAccent),
-        );
-      }
-    }
-  }
-
-  void _moveBlockUp(int blockIdx) {
-    if (blockIdx <= 0 || blockIdx >= _blocks.length) return;
-    setState(() {
-      final temp = _blocks[blockIdx];
-      _blocks[blockIdx] = _blocks[blockIdx - 1];
-      _blocks[blockIdx - 1] = temp;
-    });
-  }
-
-  void _moveBlockDown(int blockIdx) {
-    if (blockIdx >= _blocks.length - 1) return;
-    setState(() {
-      final temp = _blocks[blockIdx];
-      _blocks[blockIdx] = _blocks[blockIdx + 1];
-      _blocks[blockIdx + 1] = temp;
-    });
   }
 
   // ── Voice memo helpers ────────────────────────────────────────────────────
@@ -552,57 +370,18 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  // ── Markdown helpers ──────────────────────────────────────────────────────
-
-  void _wrapSelection(String before, String after) {
-    final ctrl = _focusedCtrl;
-    if (ctrl == null) return;
-    final sel = ctrl.selection;
-    if (!sel.isValid) return;
-    final text = ctrl.text;
-    final start = sel.start < 0 ? text.length : sel.start;
-    final end = sel.end < 0 ? text.length : sel.end;
-    final selected = text.substring(start, end);
-    final newText = text.replaceRange(start, end, '$before$selected$after');
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-          offset: start + before.length + selected.length + after.length),
-    );
-    _dirty = true;
-  }
-
-  void _insertLinePrefix(String prefix) {
-    final ctrl = _focusedCtrl;
-    if (ctrl == null) return;
-    final sel = ctrl.selection;
-    final text = ctrl.text;
-    final cursor = sel.start < 0 ? text.length : sel.start;
-    final lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
-    final newText =
-        text.substring(0, lineStart) + prefix + text.substring(lineStart);
-    ctrl.value = TextEditingValue(
-      text: newText,
-      selection:
-          TextSelection.collapsed(offset: cursor + prefix.length),
-    );
-    _dirty = true;
-  }
-
   // ── Save / Delete ─────────────────────────────────────────────────────────
 
   Future<void> _pickSealDate() async {
     final t = _t;
     final picked = await showDatePicker(
       context: context,
-      initialDate:
-          _lockedUntil ?? DateTime.now().add(const Duration(days: 30)),
+      initialDate: _lockedUntil ?? DateTime.now().add(const Duration(days: 30)),
       firstDate: DateTime.now().add(const Duration(days: 1)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
       builder: (ctx, child) => Theme(
         data: ThemeData.dark().copyWith(
-          colorScheme:
-              ColorScheme.dark(primary: t.accent, surface: t.paper),
+          colorScheme: ColorScheme.dark(primary: t.accent, surface: t.paper),
           dialogTheme: DialogThemeData(backgroundColor: t.paper),
         ),
         child: child!,
@@ -671,8 +450,7 @@ class _EntryScreenState extends State<EntryScreen> {
               child: Text('Cancel', style: TextStyle(color: t.muted))),
           TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete',
-                  style: TextStyle(color: Colors.redAccent))),
+              child: const Text('Delete', style: TextStyle(color: Colors.redAccent))),
         ],
       ),
     );
@@ -707,14 +485,11 @@ class _EntryScreenState extends State<EntryScreen> {
         actions: [
           IconButton(
             icon: Icon(
-              _isFavorite
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
+              _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
               color: _isFavorite ? const Color(0xFFf48fb1) : t.appBarFg,
               size: 20,
             ),
-            onPressed: () =>
-                setState(() { _isFavorite = !_isFavorite; _dirty = true; }),
+            onPressed: () => setState(() { _isFavorite = !_isFavorite; _dirty = true; }),
             tooltip: _isFavorite ? 'Unfavorite' : 'Favorite',
           ),
           if (_isEdit)
@@ -722,14 +497,15 @@ class _EntryScreenState extends State<EntryScreen> {
               icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
               onPressed: _delete,
             ),
-          // Edit button — only shown in read/preview mode for existing entries
           if (_previewMode && _isEdit)
             IconButton(
               icon: Icon(Icons.edit_rounded, color: t.appBarFg, size: 20),
               tooltip: 'Edit entry',
-              onPressed: () => setState(() => _previewMode = false),
+              onPressed: () {
+                setState(() => _previewMode = false);
+                _tiptapCtrl.setEditable(true);
+              },
             ),
-          // Save button — shown in edit mode when there are unsaved changes
           if (!_previewMode || !_isEdit)
             if (_dirty || !_isEdit)
               _saving
@@ -753,308 +529,6 @@ class _EntryScreenState extends State<EntryScreen> {
           if (constraints.maxWidth >= 700) return _wideLayout(t);
           return _narrowLayout(t);
         },
-      ),
-    );
-  }
-
-  // ── Block list ────────────────────────────────────────────────────────────
-
-  List<Widget> _buildBlockList(PaperTheme t, {required double fontSize}) {
-    final widgets = <Widget>[];
-    for (int i = 0; i < _blocks.length; i++) {
-      final b = _blocks[i];
-      if (b is _TextBlock) {
-        if (_previewMode) {
-          if (b.ctrl.text.isNotEmpty) {
-            widgets.add(Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: MarkdownBody(
-                data: b.ctrl.text,
-                styleSheet: MarkdownStyleSheet(
-                  p: GoogleFonts.lora(
-                      color: t.ink, fontSize: fontSize, height: 1.95),
-                  h1: GoogleFonts.cormorant(
-                      color: t.heading,
-                      fontSize: fontSize + 8,
-                      fontWeight: FontWeight.w700),
-                  h2: GoogleFonts.cormorant(
-                      color: t.heading,
-                      fontSize: fontSize + 4,
-                      fontWeight: FontWeight.w600),
-                  listBullet: GoogleFonts.lora(
-                      color: t.ink, fontSize: fontSize),
-                  strong: GoogleFonts.lora(
-                      color: t.ink, fontWeight: FontWeight.w800),
-                  em: GoogleFonts.lora(
-                      color: t.ink, fontStyle: FontStyle.italic),
-                ),
-              ),
-            ));
-          }
-        } else {
-          widgets.add(Focus(
-            onFocusChange: (focused) {
-              if (focused) setState(() => _lastFocusedIdx = i);
-            },
-            child: TextField(
-              controller: b.ctrl,
-              focusNode: b.focusNode,
-              maxLines: null,
-              textAlignVertical: TextAlignVertical.top,
-              style: GoogleFonts.lora(
-                  color: t.ink, fontSize: fontSize, height: 1.95),
-              decoration: InputDecoration(
-                hintText: i == 0 ? 'Write your thoughts…' : '',
-                hintStyle: GoogleFonts.lora(
-                    color: t.muted.withValues(alpha: 0.38),
-                    fontSize: fontSize,
-                    fontStyle: FontStyle.italic),
-                border: InputBorder.none,
-              ),
-            ),
-          ));
-        }
-      } else if (b is _ImageBlock && !b.isPending) {
-        widgets.add(_imageBlockWidget(b, i, t));
-      }
-    }
-    return widgets;
-  }
-
-  // ── Image block widget — float left/right or centered with drag-to-resize ──
-
-  Widget _imageBlockWidget(_ImageBlock block, int blockIdx, PaperTheme t) {
-    final data = block.photo['data'] as String? ?? '';
-    final bytes = _base64ToBytes(data);
-
-    return LayoutBuilder(builder: (ctx, constraints) {
-      final containerW = constraints.maxWidth;
-      final defaultFloatW = (containerW * 0.42).clamp(80.0, containerW - 40);
-      final rawW = block.widthPx ?? (block.align == 'center' ? containerW : defaultFloatW);
-      final imgW = rawW.clamp(80.0, containerW - 4);
-
-      // The image itself with a drag-to-resize corner handle
-      Widget imageWidget = Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.memory(bytes, width: imgW, fit: BoxFit.cover),
-          ),
-          if (!_previewMode)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: GestureDetector(
-                onPanUpdate: (d) => setState(() {
-                  block.widthPx =
-                      (imgW + d.delta.dx).clamp(80.0, containerW - 4);
-                  _dirty = true;
-                }),
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.resizeUpLeftDownRight,
-                  child: Container(
-                    width: 22,
-                    height: 22,
-                    decoration: BoxDecoration(
-                      color: t.accent,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(7),
-                        bottomRight: Radius.circular(10),
-                      ),
-                    ),
-                    child: const Icon(Icons.open_in_full_rounded,
-                        size: 12, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      );
-
-      // Alignment / float button row
-      Widget controlBar() {
-        final alignItems = [
-          ('left', Icons.format_align_left_rounded, 'Float left'),
-          ('center', Icons.format_align_center_rounded, 'Center'),
-          ('right', Icons.format_align_right_rounded, 'Float right'),
-        ];
-        return Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...alignItems.map((a) {
-                final sel = block.align == a.$1;
-                return GestureDetector(
-                  onTap: () => setState(() {
-                    block.align = a.$1;
-                    if (a.$1 == 'center') block.widthPx = null;
-                    _dirty = true;
-                  }),
-                  child: Tooltip(
-                    message: a.$3,
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      margin: const EdgeInsets.only(right: 4),
-                      decoration: BoxDecoration(
-                        color: sel
-                            ? t.accent.withValues(alpha: 0.15)
-                            : t.bg,
-                        borderRadius: BorderRadius.circular(7),
-                        border: Border.all(
-                            color: sel ? t.accent : t.border,
-                            width: sel ? 1.3 : 0.6),
-                      ),
-                      child: Icon(a.$2,
-                          size: 16,
-                          color: sel ? t.accent : t.muted),
-                    ),
-                  ),
-                );
-              }),
-              const SizedBox(width: 8),
-              // Move up / down
-              if (blockIdx > 0) _imgBtn(Icons.arrow_upward_rounded, () => _moveBlockUp(blockIdx), t),
-              if (blockIdx < _blocks.length - 1) _imgBtn(Icons.arrow_downward_rounded, () => _moveBlockDown(blockIdx), t),
-              const SizedBox(width: 8),
-              // Delete
-              GestureDetector(
-                onTap: () => _removeImageBlock(blockIdx),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(7),
-                    border: Border.all(
-                        color: Colors.redAccent.withValues(alpha: 0.3),
-                        width: 0.6),
-                  ),
-                  child: const Icon(Icons.delete_outline_rounded,
-                      size: 16, color: Colors.redAccent),
-                ),
-              ),
-            ],
-          ),
-        );
-      }
-
-      // Side text field (float left/right)
-      Widget sideText({required double fontSize}) {
-        if (_previewMode) {
-          return MarkdownBody(
-            data: block.sideTextCtrl.text,
-            styleSheet: MarkdownStyleSheet(
-              p: GoogleFonts.lora(color: t.ink, fontSize: fontSize, height: 1.9),
-            ),
-          );
-        }
-        return TextField(
-          controller: block.sideTextCtrl,
-          maxLines: null,
-          style: GoogleFonts.lora(color: t.ink, fontSize: fontSize, height: 1.9),
-          decoration: InputDecoration(
-            hintText: 'Write beside image…',
-            hintStyle: GoogleFonts.lora(
-                color: t.muted.withValues(alpha: 0.38),
-                fontSize: fontSize,
-                fontStyle: FontStyle.italic),
-            border: InputBorder.none,
-          ),
-          onChanged: (_) => _mark(),
-        );
-      }
-
-      // Caption (center mode only)
-      Widget captionField() => TextField(
-        controller: block.captionCtrl,
-        readOnly: _previewMode,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.lora(
-            color: t.muted, fontSize: 14, fontStyle: FontStyle.italic),
-        decoration: InputDecoration(
-          hintText: _previewMode ? '' : 'Caption…',
-          hintStyle: TextStyle(
-              color: t.muted.withValues(alpha: 0.4),
-              fontSize: 14,
-              fontStyle: FontStyle.italic),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 4),
-        ),
-        onChanged: (_) => _mark(),
-      );
-
-      // ── Render ──────────────────────────────────────────────────────────────
-
-      if (block.align == 'left') {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  imageWidget,
-                  const SizedBox(width: 14),
-                  Expanded(child: sideText(fontSize: 18)),
-                ],
-              ),
-              if (!_previewMode) controlBar(),
-            ],
-          ),
-        );
-      }
-
-      if (block.align == 'right') {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: sideText(fontSize: 18)),
-                  const SizedBox(width: 14),
-                  imageWidget,
-                ],
-              ),
-              if (!_previewMode) controlBar(),
-            ],
-          ),
-        );
-      }
-
-      // center
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Column(
-          children: [
-            imageWidget,
-            SizedBox(width: imgW, child: captionField()),
-            if (!_previewMode) controlBar(),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _imgBtn(IconData icon, VoidCallback onTap, PaperTheme t) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 36,
-        height: 36,
-        margin: const EdgeInsets.only(right: 4),
-        decoration: BoxDecoration(
-          color: t.card,
-          borderRadius: BorderRadius.circular(7),
-          border: Border.all(color: t.border, width: 0.6),
-        ),
-        child: Icon(icon, size: 16, color: t.muted),
       ),
     );
   }
@@ -1095,7 +569,7 @@ class _EntryScreenState extends State<EntryScreen> {
                   _panelSection(t, 'Writing prompt', _promptPanel(t)),
                 if (_wordCount > 0) ...[
                   const SizedBox(height: 16),
-                  _panelSection(t, 'Stats', _statsPanel(t, moodColor)),
+                  _panelSection(t, 'Stats', _statsPanel(t)),
                 ],
               ],
             ),
@@ -1134,8 +608,7 @@ class _EntryScreenState extends State<EntryScreen> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Divider(
-                      color: t.border, thickness: 0.7, height: 1),
+                  child: Divider(color: t.border, thickness: 0.7, height: 1),
                 ),
                 const SizedBox(height: 4),
                 Expanded(
@@ -1147,24 +620,19 @@ class _EntryScreenState extends State<EntryScreen> {
                         spacing: 32,
                         child: SingleChildScrollView(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                                28, 4, 28, 80),
+                            padding: const EdgeInsets.fromLTRB(28, 4, 28, 80),
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (!_previewMode)
-                                  _markdownToolbar(t),
-                                if (!_previewMode)
-                                  const SizedBox(height: 6),
-                                ..._buildBlockList(t, fontSize: 20),
+                                if (!_previewMode) _editorToolbar(t),
+                                if (!_previewMode) const SizedBox(height: 6),
+                                _tipTapBody(),
                                 _voiceMemosSection(t),
                               ],
                             ),
                           ),
                         ),
                       ),
-                      // FAB buttons — edit mode only
                       if (!_previewMode)
                         Positioned(
                           bottom: 14,
@@ -1210,21 +678,16 @@ class _EntryScreenState extends State<EntryScreen> {
                 itemBuilder: (_, i) {
                   final m = _moods[i];
                   final sel = _mood == m;
-                  final mc = m.isNotEmpty
-                      ? (_moodColors[m] ?? t.accent)
-                      : t.muted;
+                  final mc = m.isNotEmpty ? (_moodColors[m] ?? t.accent) : t.muted;
                   return GestureDetector(
-                    onTap: () =>
-                        setState(() { _mood = m; _dirty = true; }),
+                    onTap: () => setState(() { _mood = m; _dirty = true; }),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 140),
                       width: 36,
                       height: 36,
                       margin: const EdgeInsets.only(right: 6),
                       decoration: BoxDecoration(
-                        color: sel
-                            ? mc.withValues(alpha: 0.18)
-                            : t.card,
+                        color: sel ? mc.withValues(alpha: 0.18) : t.card,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                             color: sel ? mc : t.border,
@@ -1232,12 +695,8 @@ class _EntryScreenState extends State<EntryScreen> {
                       ),
                       child: Center(
                         child: m.isEmpty
-                            ? Icon(Icons.mood_outlined,
-                                size: 14,
-                                color: sel ? t.accent : t.muted)
-                            : Text(m,
-                                style:
-                                    const TextStyle(fontSize: 16)),
+                            ? Icon(Icons.mood_outlined, size: 14, color: sel ? t.accent : t.muted)
+                            : Text(m, style: const TextStyle(fontSize: 16)),
                       ),
                     ),
                   );
@@ -1255,9 +714,7 @@ class _EntryScreenState extends State<EntryScreen> {
             child: TextField(
               controller: _title,
               style: GoogleFonts.cormorant(
-                  color: t.heading,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700),
+                  color: t.heading, fontSize: 24, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 hintText: 'Entry title…',
                 hintStyle: GoogleFonts.cormorant(
@@ -1270,8 +727,7 @@ class _EntryScreenState extends State<EntryScreen> {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Divider(
-                color: t.border, thickness: 0.6, height: 1),
+            child: Divider(color: t.border, thickness: 0.6, height: 1),
           ),
           const SizedBox(height: 4),
           Expanded(
@@ -1293,32 +749,21 @@ class _EntryScreenState extends State<EntryScreen> {
                               accentColor: t.accent,
                               inkColor: t.ink,
                               mutedColor: t.muted,
-                              onDismiss: () =>
-                                  setState(() => _showPrompt = false),
+                              onDismiss: () => setState(() => _showPrompt = false),
                               onUse: (p) {
-                                final ctrl = _focusedCtrl ??
-                                    (_blocks.isNotEmpty &&
-                                            _blocks.first is _TextBlock
-                                        ? (_blocks.first as _TextBlock)
-                                            .ctrl
-                                        : null);
-                                ctrl?.text = p;
-                                setState(() {
-                                  _dirty = true;
-                                  _showPrompt = false;
-                                });
+                                _tiptapCtrl.setContent('<p>$p</p>');
+                                setState(() { _dirty = true; _showPrompt = false; });
                               },
                             ),
-                          if (!_previewMode) _markdownToolbar(t),
+                          if (!_previewMode) _editorToolbar(t),
                           if (!_previewMode) const SizedBox(height: 6),
-                          ..._buildBlockList(t, fontSize: 18),
+                          _tipTapBody(),
                           _voiceMemosSection(t),
                         ],
                       ),
                     ),
                   ),
                 ),
-                // FAB buttons — edit mode only
                 if (!_previewMode)
                   Positioned(
                     bottom: 14,
@@ -1361,114 +806,20 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  // ── Photo FAB ─────────────────────────────────────────────────────────────
+  // ── TipTap body ───────────────────────────────────────────────────────────
 
-  Widget _addPhotoButton(PaperTheme t) {
-    if (_uploading) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: t.accent,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
-          ],
-        ),
-        child: const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-        ),
-      );
-    }
-    return GestureDetector(
-      onTap: _pickPhoto,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: t.accent,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
-          ],
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: const [
-          Icon(Icons.add_photo_alternate_rounded,
-              size: 16, color: Colors.white),
-          SizedBox(width: 6),
-          Text('Add Image',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700)),
-        ]),
-      ),
+  Widget _tipTapBody() {
+    return TipTapEditor(
+      controller: _tiptapCtrl,
+      initialHtml: '',
+      editable: !_previewMode,
+      minHeight: 300,
     );
   }
 
-  Widget _micButton(PaperTheme t) {
-    if (_memoUploading) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: t.accent,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
-          ],
-        ),
-        child: const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-        ),
-      );
-    }
-    if (_recording) {
-      final m = _recordElapsed.inMinutes;
-      final s = _recordElapsed.inSeconds % 60;
-      return GestureDetector(
-        onTap: _toggleRecording,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: Colors.redAccent,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
-            ],
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.stop_rounded, size: 16, color: Colors.white),
-            const SizedBox(width: 6),
-            Text('$m:${s.toString().padLeft(2, '0')}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
-          ]),
-        ),
-      );
-    }
-    return GestureDetector(
-      onTap: _toggleRecording,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: t.accent,
-          shape: BoxShape.circle,
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))
-          ],
-        ),
-        child: const Icon(Icons.mic_rounded, size: 16, color: Colors.white),
-      ),
-    );
-  }
+  // ── Editor toolbar ────────────────────────────────────────────────────────
 
-  // ── Markdown toolbar ──────────────────────────────────────────────────────
-
-  Widget _markdownToolbar(PaperTheme t) {
+  Widget _editorToolbar(PaperTheme t) {
     Widget btn(IconData icon, VoidCallback onTap, {String? tooltip}) {
       return Tooltip(
         message: tooltip ?? '',
@@ -1492,49 +843,99 @@ class _EntryScreenState extends State<EntryScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          btn(Icons.format_bold_rounded, () => _wrapSelection('**', '**'),
-              tooltip: 'Bold'),
-          btn(Icons.format_italic_rounded, () => _wrapSelection('*', '*'),
-              tooltip: 'Italic'),
-          btn(Icons.title_rounded, () => _insertLinePrefix('# '),
-              tooltip: 'Heading'),
-          btn(Icons.format_list_bulleted_rounded,
-              () => _insertLinePrefix('- '),
-              tooltip: 'Bullet'),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: () => setState(() => _previewMode = !_previewMode),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: _previewMode
-                    ? t.accent.withValues(alpha: 0.15)
-                    : t.card,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                    color: _previewMode ? t.accent : t.border,
-                    width: _previewMode ? 1.2 : 0.6),
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(
-                    _previewMode
-                        ? Icons.edit_rounded
-                        : Icons.visibility_rounded,
-                    size: 13,
-                    color: _previewMode ? t.accent : t.muted),
-                const SizedBox(width: 4),
-                Text(
-                  _previewMode ? 'Edit' : 'Preview',
-                  style: TextStyle(
-                      color: _previewMode ? t.accent : t.muted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600),
-                ),
-              ]),
-            ),
-          ),
+          btn(Icons.format_bold_rounded, _tiptapCtrl.bold, tooltip: 'Bold'),
+          btn(Icons.format_italic_rounded, _tiptapCtrl.italic, tooltip: 'Italic'),
+          btn(Icons.title_rounded, _tiptapCtrl.heading, tooltip: 'Heading'),
+          btn(Icons.format_list_bulleted_rounded, _tiptapCtrl.bulletList, tooltip: 'Bullet list'),
         ],
+      ),
+    );
+  }
+
+  // ── Photo / mic FABs ──────────────────────────────────────────────────────
+
+  Widget _addPhotoButton(PaperTheme t) {
+    if (_uploading) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: t.accent,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+        ),
+      );
+    }
+    return GestureDetector(
+      onTap: _pickPhoto,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: t.accent,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.add_photo_alternate_rounded, size: 16, color: Colors.white),
+          SizedBox(width: 6),
+          Text('Add Image',
+              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _micButton(PaperTheme t) {
+    if (_memoUploading) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: t.accent,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+        ),
+      );
+    }
+    if (_recording) {
+      final m = _recordElapsed.inMinutes;
+      final s = _recordElapsed.inSeconds % 60;
+      return GestureDetector(
+        onTap: _toggleRecording,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: Colors.redAccent,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.stop_rounded, size: 16, color: Colors.white),
+            const SizedBox(width: 6),
+            Text('$m:${s.toString().padLeft(2, '0')}',
+                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      );
+    }
+    return GestureDetector(
+      onTap: _toggleRecording,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: t.accent,
+          shape: BoxShape.circle,
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+        ),
+        child: const Icon(Icons.mic_rounded, size: 16, color: Colors.white),
       ),
     );
   }
@@ -1549,18 +950,13 @@ class _EntryScreenState extends State<EntryScreen> {
         const SizedBox(height: 12),
         Text('VOICE MEMOS',
             style: TextStyle(
-                color: t.muted,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1)),
+                color: t.muted, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
         const SizedBox(height: 8),
         ..._voiceMemos.asMap().entries.map((e) => VoiceMemoPlayer(
               dataUrl: e.value['data'] as String,
-              durationMs:
-                  int.tryParse('${e.value['duration_ms']}') ?? 0,
+              durationMs: int.tryParse('${e.value['duration_ms']}') ?? 0,
               theme: t,
-              onDelete: () =>
-                  _deleteVoiceMemo(e.value['id'] as String, e.key),
+              onDelete: () => _deleteVoiceMemo(e.value['id'] as String, e.key),
             )),
       ],
     );
@@ -1588,9 +984,7 @@ class _EntryScreenState extends State<EntryScreen> {
 
   Widget _dateBlock(PaperTheme t) {
     final now = _isEdit
-        ? (DateTime.tryParse(
-                widget.entry?['created_at'] as String? ?? '') ??
-            DateTime.now())
+        ? (DateTime.tryParse(widget.entry?['created_at'] as String? ?? '') ?? DateTime.now())
         : DateTime.now();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1626,14 +1020,11 @@ class _EntryScreenState extends State<EntryScreen> {
             decoration: BoxDecoration(
               color: sel ? mc.withValues(alpha: 0.18) : t.paper,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: sel ? mc : t.border,
-                  width: sel ? 1.5 : 0.6),
+              border: Border.all(color: sel ? mc : t.border, width: sel ? 1.5 : 0.6),
             ),
             child: Center(
               child: m.isEmpty
-                  ? Icon(Icons.mood_outlined,
-                      size: 15, color: sel ? t.accent : t.muted)
+                  ? Icon(Icons.mood_outlined, size: 15, color: sel ? t.accent : t.muted)
                   : Text(m, style: const TextStyle(fontSize: 17)),
             ),
           ),
@@ -1657,19 +1048,14 @@ class _EntryScreenState extends State<EntryScreen> {
         return GestureDetector(
           onTap: () => setState(() { _paperStyle = s.$1; _dirty = true; }),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
-              color:
-                  sel ? t.accent.withValues(alpha: 0.15) : t.paper,
+              color: sel ? t.accent.withValues(alpha: 0.15) : t.paper,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: sel ? t.accent : t.border,
-                  width: sel ? 1.2 : 0.6),
+              border: Border.all(color: sel ? t.accent : t.border, width: sel ? 1.2 : 0.6),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(s.$3,
-                  size: 12, color: sel ? t.accent : t.muted),
+              Icon(s.$3, size: 12, color: sel ? t.accent : t.muted),
               const SizedBox(width: 4),
               Text(s.$2,
                   style: TextStyle(
@@ -1689,29 +1075,24 @@ class _EntryScreenState extends State<EntryScreen> {
       runSpacing: 8,
       children: [
         GestureDetector(
-          onTap: () =>
-              setState(() { _themeId = ''; _dirty = true; }),
+          onTap: () {
+            setState(() { _themeId = ''; _dirty = true; });
+            WidgetsBinding.instance.addPostFrameCallback((_) => _applyTipTapTheme());
+          },
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
               color: (_themeId == null || _themeId!.isEmpty)
                   ? t.accent.withValues(alpha: 0.15)
                   : t.paper,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: (_themeId == null || _themeId!.isEmpty)
-                      ? t.accent
-                      : t.border,
-                  width: (_themeId == null || _themeId!.isEmpty)
-                      ? 1.2
-                      : 0.6),
+                  color: (_themeId == null || _themeId!.isEmpty) ? t.accent : t.border,
+                  width: (_themeId == null || _themeId!.isEmpty) ? 1.2 : 0.6),
             ),
             child: Text('Auto',
                 style: TextStyle(
-                    color: (_themeId == null || _themeId!.isEmpty)
-                        ? t.accent
-                        : t.muted,
+                    color: (_themeId == null || _themeId!.isEmpty) ? t.accent : t.muted,
                     fontSize: 12,
                     fontWeight: FontWeight.w600)),
           ),
@@ -1719,8 +1100,10 @@ class _EntryScreenState extends State<EntryScreen> {
         ...allPaperThemes.map((pt) {
           final sel = _themeId == pt.id;
           return GestureDetector(
-            onTap: () =>
-                setState(() { _themeId = pt.id; _dirty = true; }),
+            onTap: () {
+              setState(() { _themeId = pt.id; _dirty = true; });
+              _applyTipTapTheme(pt);
+            },
             child: Container(
               width: 26,
               height: 26,
@@ -1728,12 +1111,9 @@ class _EntryScreenState extends State<EntryScreen> {
                 color: pt.dot,
                 shape: BoxShape.circle,
                 border: Border.all(
-                    color: sel ? t.accent : Colors.transparent,
-                    width: 2.4),
+                    color: sel ? t.accent : Colors.transparent, width: 2.4),
               ),
-              child: sel
-                  ? const Icon(Icons.check, size: 13, color: Colors.white)
-                  : null,
+              child: sel ? const Icon(Icons.check, size: 13, color: Colors.white) : null,
             ),
           );
         }),
@@ -1760,13 +1140,11 @@ class _EntryScreenState extends State<EntryScreen> {
   Widget _tagChip(String tag, PaperTheme t) {
     return InputChip(
       label: Text('#$tag',
-          style: TextStyle(
-              color: t.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+          style: TextStyle(color: t.accent, fontSize: 13, fontWeight: FontWeight.w600)),
       onDeleted: () => _removeTag(tag),
       deleteIcon: Icon(Icons.close, size: 11, color: t.muted),
       backgroundColor: t.accent.withValues(alpha: 0.1),
-      side: BorderSide(
-          color: t.accent.withValues(alpha: 0.3), width: 0.6),
+      side: BorderSide(color: t.accent.withValues(alpha: 0.3), width: 0.6),
       padding: const EdgeInsets.symmetric(horizontal: 2),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1784,8 +1162,7 @@ class _EntryScreenState extends State<EntryScreen> {
           hintText: 'add tag',
           hintStyle: TextStyle(color: t.muted, fontSize: 12),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
           prefixText: '# ',
           prefixStyle: TextStyle(color: t.muted, fontSize: 12),
         ),
@@ -1803,11 +1180,7 @@ class _EntryScreenState extends State<EntryScreen> {
       mutedColor: t.muted,
       onDismiss: () => setState(() => _showPrompt = false),
       onUse: (p) {
-        final ctrl = _focusedCtrl ??
-            (_blocks.isNotEmpty && _blocks.first is _TextBlock
-                ? (_blocks.first as _TextBlock).ctrl
-                : null);
-        ctrl?.text = p;
+        _tiptapCtrl.setContent('<p>$p</p>');
         setState(() { _dirty = true; _showPrompt = false; });
       },
     );
@@ -1819,13 +1192,11 @@ class _EntryScreenState extends State<EntryScreen> {
       children: [
         if (_lockedUntil != null) ...[
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: t.accent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: t.accent.withValues(alpha: 0.3), width: 0.6),
+              border: Border.all(color: t.accent.withValues(alpha: 0.3), width: 0.6),
             ),
             child: Row(children: [
               const Text('🔒', style: TextStyle(fontSize: 13)),
@@ -1833,15 +1204,11 @@ class _EntryScreenState extends State<EntryScreen> {
               Expanded(
                 child: Text(
                   'Seals ${DateFormat('MMM d, yyyy').format(_lockedUntil!)}',
-                  style: TextStyle(
-                      color: t.accent,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600),
+                  style: TextStyle(color: t.accent, fontSize: 11, fontWeight: FontWeight.w600),
                 ),
               ),
               GestureDetector(
-                onTap: () =>
-                    setState(() { _lockedUntil = null; _dirty = true; }),
+                onTap: () => setState(() { _lockedUntil = null; _dirty = true; }),
                 child: Icon(Icons.close, size: 13, color: t.muted),
               ),
             ]),
@@ -1851,8 +1218,7 @@ class _EntryScreenState extends State<EntryScreen> {
         GestureDetector(
           onTap: _pickSealDate,
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
               color: t.paper,
               borderRadius: BorderRadius.circular(8),
@@ -1862,9 +1228,7 @@ class _EntryScreenState extends State<EntryScreen> {
               Icon(Icons.lock_outline, size: 13, color: t.muted),
               const SizedBox(width: 6),
               Text(
-                _lockedUntil == null
-                    ? 'Seal until a date…'
-                    : 'Change date',
+                _lockedUntil == null ? 'Seal until a date…' : 'Change date',
                 style: TextStyle(color: t.muted, fontSize: 11),
               ),
             ]),
@@ -1877,19 +1241,13 @@ class _EntryScreenState extends State<EntryScreen> {
     );
   }
 
-  Widget _statsPanel(PaperTheme t, Color? moodColor) {
-    final imageCount =
-        _blocks.whereType<_ImageBlock>().where((b) => !b.isPending).length;
+  Widget _statsPanel(PaperTheme t) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _statRow(t, 'Words', '$_wordCount'),
-        const SizedBox(height: 4),
-        if (_mood.isNotEmpty) _statRow(t, 'Mood', _mood),
-        if (imageCount > 0) ...[
-          const SizedBox(height: 4),
-          _statRow(t, 'Images', '$imageCount'),
-        ],
+        if (_mood.isNotEmpty) ...[const SizedBox(height: 4), _statRow(t, 'Mood', _mood)],
+        if (_imageCount > 0) ...[const SizedBox(height: 4), _statRow(t, 'Images', '$_imageCount')],
         if (_voiceMemos.isNotEmpty) ...[
           const SizedBox(height: 4),
           _statRow(t, 'Voice memos', '${_voiceMemos.length}'),
@@ -1901,15 +1259,10 @@ class _EntryScreenState extends State<EntryScreen> {
   Widget _statRow(PaperTheme t, String label, String value) {
     return Row(
       children: [
-        Text(label,
-            style: TextStyle(
-                color: t.ink.withValues(alpha: 0.65), fontSize: 13)),
+        Text(label, style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 13)),
         const Spacer(),
         Text(value,
-            style: TextStyle(
-                color: t.heading,
-                fontSize: 14,
-                fontWeight: FontWeight.w600)),
+            style: TextStyle(color: t.heading, fontSize: 14, fontWeight: FontWeight.w600)),
       ],
     );
   }
