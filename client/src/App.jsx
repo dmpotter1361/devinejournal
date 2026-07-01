@@ -4,6 +4,7 @@ import SignIn from './pages/SignIn';
 import Timeline from './pages/Timeline';
 import EntryEditor from './pages/EntryEditor';
 import Calendar from './pages/Calendar';
+import SearchOverlay from './components/SearchOverlay';
 
 function Private({ children }) {
   return getToken() ? children : <Navigate to="/" replace />;
@@ -16,6 +17,7 @@ function Root() {
 export default function App() {
   return (
     <BrowserRouter>
+      <SearchOverlay />
       <Routes>
         <Route path="/" element={<Root />} />
         <Route path="/timeline" element={<Private><Timeline /></Private>} />

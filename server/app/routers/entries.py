@@ -1,4 +1,6 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
@@ -32,6 +34,46 @@ def create_entry(
     db.commit()
     db.refresh(entry)
     return entry
+
+def _is_sealed(entry: models.Entry) -> bool:
+    if not entry.locked_until:
+        return False
+    try:
+        opens = datetime.fromisoformat(entry.locked_until.replace("Z", "+00:00"))
+        if opens.tzinfo is None:
+            opens = opens.replace(tzinfo=timezone.utc)
+        return opens > datetime.now(timezone.utc)
+    except ValueError:
+        return False
+
+# NOTE: must be registered before /{entry_id} or "search" gets parsed as a UUID
+@router.get("/search", response_model=List[EntryOut])
+def search_entries(
+    q: str = "",
+    db: Session = Depends(get_db),
+    user: models.User = Depends(current_user),
+):
+    q = q.strip()
+    if not q:
+        return []
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = f"%{escaped}%"
+    rows = (
+        db.query(models.Entry)
+        .filter(
+            models.Entry.user_id == user.id,
+            or_(
+                models.Entry.title.ilike(like),
+                models.Entry.body.ilike(like),
+                models.Entry.tags.ilike(like),
+            ),
+        )
+        .order_by(models.Entry.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    # Sealed entries stay sealed — never surface their content in search
+    return [e for e in rows if not _is_sealed(e)]
 
 @router.get("/{entry_id}", response_model=EntryOut)
 def get_entry(

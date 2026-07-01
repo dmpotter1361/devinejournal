@@ -47,6 +47,7 @@ export const api = {
   googleAuth: (access_token) => req('/auth/google', 'POST', { access_token }),
 
   listEntries: () => req('/entries'),
+  searchEntries: (q) => req(`/entries/search?q=${encodeURIComponent(q)}`),
   getEntry: (id) => req(`/entries/${id}`),
   createEntry: (data) => req('/entries', 'POST', data),
   updateEntry: (id, data) => req(`/entries/${id}`, 'PUT', data),

@@ -73,7 +73,7 @@ export default function Calendar() {
       <header className="app-header">
         <Link to="/timeline" className="btn ghost icon-btn">←</Link>
         <span className="header-spacer" />
-        <span className="brand cinzel">📅 Calendar</span>
+        <span className="brand cinzel cal-brand">☽ Almanac ☾</span>
         <span className="header-spacer" />
       </header>
 
@@ -96,24 +96,29 @@ export default function Calendar() {
               const isToday = year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
               const isSel = selected?.date?.getDate() === day && selected?.date?.getMonth() === month && selected?.date?.getFullYear() === year;
               const moon = moonPhase(year, month, day);
-
+              const moodsToShow = dayEntries.filter(e => e.mood).slice(0, 3);
+              const extraCount = dayEntries.length > 3 ? dayEntries.length - 3 : 0;
               return (
                 <button
                   key={day}
                   className={`cal-cell ${isToday ? 'today' : ''} ${isSel ? 'sel' : ''} ${dayEntries.length ? 'has-entries' : ''}`}
                   onClick={() => handleDay(day)}
                 >
-                  <span className="cal-day-num">{day}</span>
-                  <span className="cal-moon" title={moon}>{moon}</span>
+                  <div className="cal-cell-top">
+                    <span className="cal-day-num">{day}</span>
+                    <span className="cal-moon">{moon}</span>
+                  </div>
                   {dayEntries.length > 0 && (
-                    <div className="cal-dots">
-                      {dayEntries.slice(0, 3).map(e => (
-                        <span
-                          key={e.id}
-                          className="cal-dot"
-                          style={{ background: e.mood ? (moodColor(e.mood) || 'var(--accent)') : 'var(--accent)' }}
-                        />
-                      ))}
+                    <div className="cal-cell-bottom">
+                      <div className="cal-moods">
+                        {moodsToShow.map(e => (
+                          <span key={e.id} className="cal-mood-pip">{e.mood}</span>
+                        ))}
+                        {dayEntries.filter(e => !e.mood).slice(0, 3 - moodsToShow.length).map(e => (
+                          <span key={e.id} className="cal-dot-pip" style={{ background: 'var(--accent)' }} />
+                        ))}
+                      </div>
+                      <span className="cal-count">{dayEntries.length}</span>
                     </div>
                   )}
                 </button>
@@ -122,18 +127,27 @@ export default function Calendar() {
           </div>
         </div>
 
-        {/* Day entries panel */}
-        {selected && (
-          <div className="cal-entries">
-            <div className="cal-entries-header">
-              <h3 className="cal-entries-date cinzel">
-                {selected.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              </h3>
-              <button className="btn icon-btn" onClick={() => setSelected(null)}>✕</button>
-            </div>
-            {selected.entries.length === 0 ? (
+        {/* Day entries panel — always visible */}
+        <div className="cal-entries">
+          <div className="cal-entries-header">
+            <h3 className="cal-entries-date cinzel">
+              {selected
+                ? selected.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+                : 'Select a day'}
+            </h3>
+            {selected && (
+              <button className="btn icon-btn" onClick={() => setSelected(null)} title="Clear">✕</button>
+            )}
+          </div>
+          <div className="cal-entries-body">
+            {!selected ? (
+              <div className="cal-no-day">
+                <span className="cal-no-day-icon">🌙</span>
+                <span>Tap a day to see entries</span>
+              </div>
+            ) : selected.entries.length === 0 ? (
               <div className="cal-no-entries">
-                <p className="muted">No entries</p>
+                <span>No entries this day</span>
                 <button className="btn" onClick={() => nav('/entry/new')}>✦ New entry</button>
               </div>
             ) : (
@@ -144,13 +158,19 @@ export default function Calendar() {
                       {e.mood && <span className="cal-entry-mood">{e.mood}</span>}
                       <span className="cal-entry-title">{e.title || '(untitled)'}</span>
                     </div>
-                    {e.tags && <div className="cal-entry-tags">{e.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => <span key={t} className="tag">{t}</span>)}</div>}
+                    {e.tags && (
+                      <div className="cal-entry-tags">
+                        {e.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => (
+                          <span key={t} className="tag">{t}</span>
+                        ))}
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
