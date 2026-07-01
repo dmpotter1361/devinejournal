@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api';
 import { MOODS, moodColor } from '../moods';
-import { THEMES } from '../themes';
+import { THEMES, themeById } from '../themes';
 import RichEditor, { resizeToBase64 } from '../components/RichEditor';
 import './EntryEditor.css';
 
@@ -287,7 +287,7 @@ function TagInput({ value, onChange }) {
       )}
       <input
         className="ee-tags-input"
-        placeholder="Type a tag, press Enter or comma…"
+        placeholder="Add a tag…"
         value={input}
         onChange={e => handleInput(e.target.value)}
         onKeyDown={e => {
@@ -425,19 +425,25 @@ export default function EntryEditor() {
   const showPrompts = isNew && (!body || body === '<p></p>' || body.trim() === '');
   const insertImage = useCallback(async (file) => resizeToBase64(file), []);
 
+  // Journal theme: scoped CSS vars on the page root only — never touches the
+  // global theme (:root vars stay whatever the Timeline picker set).
+  const journalTheme = themeId ? themeById(themeId) : null;
+  const pageClass = `ee-page ${journalTheme ? 'ee-themed' : ''}`;
+  const pageStyle = journalTheme ? journalTheme.vars : undefined;
+
   if (loading) return (
     <div className="ee-page">
       <header className="app-header">
-        <Link to="/timeline" className="btn ghost icon-btn">←</Link>
+        <Link to="/timeline" className="back-btn" title="Back to your journal">⟵</Link>
       </header>
       <div className="ee-loading">Loading…</div>
     </div>
   );
 
   return (
-    <div className="ee-page">
+    <div className={pageClass} style={pageStyle}>
       <header className="app-header">
-        <Link to="/timeline" className="btn ghost icon-btn" title="Back">←</Link>
+        <Link to="/timeline" className="back-btn" title="Back to your journal">⟵</Link>
         <input
           className="ee-title-input"
           placeholder="Entry title (optional)"
@@ -510,7 +516,7 @@ export default function EntryEditor() {
             </section>
 
             <section className="ee-section">
-              <h4 className="ee-section-label">Theme</h4>
+              <h4 className="ee-section-label">Journal Theme</h4>
               <div className="ee-theme-row">
                 <button
                   className={`ee-theme-btn ${!themeId ? 'sel' : ''}`}

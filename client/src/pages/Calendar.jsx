@@ -71,7 +71,7 @@ export default function Calendar() {
   return (
     <div className="cal-page">
       <header className="app-header">
-        <Link to="/timeline" className="btn ghost icon-btn">←</Link>
+        <Link to="/timeline" className="back-btn" title="Back to your journal">⟵</Link>
         <span className="header-spacer" />
         <span className="brand cinzel cal-brand">☽ Almanac ☾</span>
         <span className="header-spacer" />

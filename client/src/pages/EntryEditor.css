@@ -5,6 +5,24 @@
   overflow: hidden;
 }
 
+/* Journal-theme override: the entry's own theme paints this page only,
+   via inline CSS vars on .ee-page — the global (Timeline) theme is untouched.
+   Replicates the body star field so the ambience matches the journal theme. */
+.ee-page.ee-themed {
+  color: var(--ink);
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, color-mix(in srgb, var(--accent) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(-45deg, color-mix(in srgb, var(--accent) 4%, transparent) 1px, transparent 1px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent) 0.5px, transparent 0.5px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent) 0.5px, transparent 0.5px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent) 1px,  transparent 1px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 15%, transparent) 0.5px, transparent 0.5px);
+  background-size: 48px 48px, 48px 48px, 127px 113px, 79px 67px, 197px 181px, 53px 47px;
+  background-position: 0 0, 0 0, 7px 11px, 37px 23px, 83px 57px, 19px 41px;
+  transition: background-color 0.25s var(--ease), color 0.25s var(--ease);
+}
+
 /* ── Header ── */
 .ee-title-input {
   flex: 1;

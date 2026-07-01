@@ -62,13 +62,15 @@ function plainText(html) {
 function EntryCard({ entry, onClick, sealed }) {
   const mc = moodColor(entry.mood);
   const theme = themeById(entry.theme_id || 'midnight');
+  // Only entries with an explicit journal theme get the card-body tint
+  const themedClass = entry.theme_id ? 'entry-card--themed' : '';
   const preview = plainText(entry.body);
   const d = new Date(entry.created_at);
 
   if (sealed) {
     const opensOn = new Date(entry.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     return (
-      <button className="entry-card entry-card--sealed" onClick={onClick} style={{ '--theme-dot': theme.dot }}>
+      <button className={`entry-card entry-card--sealed ${themedClass}`} onClick={onClick} style={{ '--theme-dot': theme.dot }}>
         <div className="ec-date">
           <span className="ec-day-meta">
             <span className="ec-weekday">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
@@ -88,7 +90,7 @@ function EntryCard({ entry, onClick, sealed }) {
   }
 
   return (
-    <button className="entry-card" onClick={onClick} style={{ '--theme-dot': theme.dot }}>
+    <button className={`entry-card ${themedClass}`} onClick={onClick} style={{ '--theme-dot': theme.dot }}>
       <div className="ec-date">
         <span className="ec-day-meta">
           <span className="ec-weekday">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
@@ -143,40 +145,93 @@ function getStage(streak) {
   if (streak <= 3) return 2;
   if (streak <= 6) return 3;
   if (streak <= 13) return 4;
-  if (streak <= 20) return 5;
-  return 6;
+  return 5;
+}
+
+// Perennial garden: every CYCLE_DAYS written days of gratitude grows one
+// permanent flower ("bloom"), then a fresh seed starts. Everything is derived
+// from entry history — nothing extra is stored.
+const FLOWERS = ['🌻', '🌷', '🌹', '🌸', '🌺', '🪻', '🌼', '💐'];
+const CYCLE_DAYS = 21;
+const MS_DAY = 86400000;
+
+function buildGarden(gratEntries) {
+  const dayKey = (v) => { const x = new Date(v); x.setHours(0, 0, 0, 0); return x.getTime(); };
+  const days = [...new Set(gratEntries.map(e => dayKey(e.created_at)))].sort((a, b) => a - b);
+  const today = dayKey(Date.now());
+
+  // Split into runs; a single missed day (gap ≤ 2) rests the plant, never kills it
+  const runs = [];
+  for (const d of days) {
+    const run = runs[runs.length - 1];
+    if (run && (d - run[run.length - 1]) / MS_DAY <= 2) run.push(d);
+    else runs.push([d]);
+  }
+
+  const blooms = [];
+  for (const run of runs) {
+    for (let n = CYCLE_DAYS; n <= run.length; n += CYCLE_DAYS) {
+      const start = run[n - CYCLE_DAYS];
+      const end = run[n - 1];
+      const entry = gratEntries.find(e => { const k = dayKey(e.created_at); return k >= start && k <= end; });
+      blooms.push({ emoji: FLOWERS[blooms.length % FLOWERS.length], start, end, entryId: entry?.id });
+    }
+  }
+
+  const lastRun = runs[runs.length - 1] || [];
+  const lastDay = lastRun[lastRun.length - 1];
+  const sinceLast = lastDay === undefined ? Infinity : (today - lastDay) / MS_DAY;
+  const alive = sinceLast <= 2;
+  return {
+    blooms,
+    currentDays: alive ? lastRun.length % CYCLE_DAYS : 0,
+    resting: alive && sinceLast >= 1,
+    alive,
+    hadAny: days.length > 0,
+  };
+}
+
+function bloomMonth(b) {
+  return new Date(b.end).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
 function GratitudeGarden({ entries }) {
+  const nav = useNavigate();
+  const [picked, setPicked] = useState(null);
   const gratEntries = entries.filter(e => {
     const tagList = (e.tags || '').toLowerCase().split(',').map(t => t.trim());
     return tagList.includes('gratitude');
   });
 
+  const g = buildGarden(gratEntries);
+  const stage = GARDEN_STAGES[getStage(g.currentDays)];
+
   const sameDay = (e, d) => new Date(e.created_at).toDateString() === d.toDateString();
-
-  let streak = 0;
-  for (let i = 0; i < 90; i++) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    if (gratEntries.some(e => sameDay(e, d))) streak++; else break;
-  }
-
-  // Last 7 days excluding today → become background plants
   const bgPlants = [];
   for (let i = 1; i <= 6; i++) {
     const d = new Date(); d.setDate(d.getDate() - i);
     if (gratEntries.some(e => sameDay(e, d))) bgPlants.push(i);
   }
-
-  const stageIdx = getStage(streak);
-  const stage = GARDEN_STAGES[stageIdx];
   const bgPositions = [15, 80, 25, 72, 8, 88];
   const bgSizes = [16, 18, 14, 20, 14, 16];
+
+  // Garden memory: resurface a long-forgotten bloom, rotating daily
+  const oldBlooms = g.blooms.filter(b => (Date.now() - b.end) / MS_DAY > 30);
+  const d0 = new Date();
+  const daySeed = d0.getFullYear() * 372 + d0.getMonth() * 31 + d0.getDate();
+  const memory = oldBlooms.length ? oldBlooms[daySeed % oldBlooms.length] : null;
+
+  const groundText = () => {
+    if (!g.hadAny) return <span>Write a Gratitude entry to plant your first seed</span>;
+    if (!g.alive) return <span>The soil is ready for a new seed 🫘</span>;
+    if (g.currentDays === 0) return <span>A fresh seed rests in the soil — keep writing 🌱</span>;
+    if (g.resting) return <span><span className="grat-streak-num">{g.currentDays}</span> day{g.currentDays === 1 ? '' : 's'} · resting 🌙 — write today to keep growing</span>;
+    return <span><span className="grat-streak-num">{g.currentDays}</span> day{g.currentDays === 1 ? '' : 's'} growing · {stage.label}</span>;
+  };
 
   return (
     <div className="grat-garden">
       <div className="grat-scene">
-        {/* Background plants from recent days */}
         {bgPlants.slice(0, 4).map((dayIdx, i) => (
           <span
             key={dayIdx}
@@ -184,20 +239,53 @@ function GratitudeGarden({ entries }) {
             style={{ left: `${bgPositions[i]}%`, fontSize: bgSizes[i] }}
           >🌱</span>
         ))}
-        {/* Main plant — grows with streak */}
-        {streak === 0
+        {g.currentDays === 0
           ? <span className="grat-seed">🫘</span>
-          : <span className="grat-main-plant" style={{ fontSize: stage.size }}>{stage.emoji}</span>
+          : <span className={`grat-main-plant ${g.resting ? 'grat-resting' : ''}`} style={{ fontSize: stage.size }}>{stage.emoji}</span>
         }
       </div>
-      <div className="grat-ground">
-        {streak > 0
-          ? <span><span className="grat-streak-num">{streak}</span> day{streak === 1 ? '' : 's'} growing · {stage.label}</span>
-          : <span>Write a Gratitude entry to plant your first seed</span>
-        }
-      </div>
-      {gratEntries.length > 0 && (
-        <p className="grat-total">{gratEntries.length} gratitude {gratEntries.length === 1 ? 'entry' : 'entries'} total</p>
+
+      {/* Garden bed — every completed cycle lives here forever */}
+      {g.blooms.length > 0 && (
+        <div className="grat-bed">
+          {g.blooms.slice(-6).map((b, i) => (
+            <button
+              key={`${b.end}-${i}`}
+              className="grat-bloom"
+              title={`Grew ${bloomMonth(b)}`}
+              onClick={() => setPicked(picked === b ? null : b)}
+            >{b.emoji}</button>
+          ))}
+        </div>
+      )}
+
+      <div className="grat-ground">{groundText()}</div>
+
+      {/* Story of a clicked bloom */}
+      {picked && (
+        <div className="grat-story">
+          <span className="grat-story-flower">{picked.emoji}</span>
+          <p className="grat-story-text">Grew from {CYCLE_DAYS} days of gratitude · {bloomMonth(picked)}</p>
+          {picked.entryId && (
+            <button className="grat-story-link" onClick={() => nav(`/entry/${picked.entryId}`)}>
+              Revisit a memory ✦
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Nostalgia nudge for a forgotten flower */}
+      {!picked && memory && (
+        <button className="grat-memory" onClick={() => setPicked(memory)}>
+          Remember this {memory.emoji}? You grew it in {bloomMonth(memory)}.
+        </button>
+      )}
+
+      {(gratEntries.length > 0 || g.blooms.length > 0) && (
+        <p className="grat-total">
+          {g.blooms.length > 0 && <>{g.blooms.length} flower{g.blooms.length === 1 ? '' : 's'} grown · </>}
+          {gratEntries.length} gratitude {gratEntries.length === 1 ? 'entry' : 'entries'}
+        </p>
       )}
     </div>
   );

@@ -121,6 +121,46 @@ a { color: var(--accent); }
 
 .muted { color: var(--muted); }
 
+/* ── Back button — shared by EntryEditor + Almanac headers ── */
+.back-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 72%);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--accent) 20%, transparent),
+    inset 0 0 8px color-mix(in srgb, var(--accent) 12%, transparent);
+  text-decoration: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), color 0.2s var(--ease);
+}
+.back-btn::after {
+  content: '✦';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  font-size: 11px;
+  color: var(--accent);
+  opacity: 0.85;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.back-btn:hover {
+  color: var(--heading);
+  transform: translateX(-2px);
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--accent) 40%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .cinzel {
   font-family: 'Cinzel Decorative', serif;
   letter-spacing: 0.04em;
