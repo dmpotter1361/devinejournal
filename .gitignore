@@ -15,9 +15,11 @@ app/.flutter-plugins
 app/.flutter-plugins-dependencies
 app/.packages
 
-# Flutter web build output — deployed to server via PSCP, not committed
+# Build output — deployed to server via PSCP, not committed
 # app/build/ already covered above
 static/
+client/dist/
+client/node_modules/
 
 # Editor
 .idea/

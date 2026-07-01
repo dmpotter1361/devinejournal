@@ -1,0 +1,176 @@
+/* ===========================================================================
+   DevineJournal — design tokens + base styles
+   Seven atmospheric themes; variables are set by applyTheme() in themes.js.
+   =========================================================================== */
+
+:root {
+  /* Static tokens — not per-theme */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-pill: 999px;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Defaults (midnight) set inline by applyTheme on load */
+  --bg: #0e0b18;
+  --surface: #1e1a40;
+  --surface-2: #181535;
+  --ink: #ede6ff;
+  --heading: #c9a84c;
+  --accent: #c9a84c;
+  --muted: #8878b8;
+  --line: #2d2460;
+  --ruler: #23205a;
+  --shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Derive shadow from theme brightness at theme switch time */
+[data-theme='parchment'] {
+  --shadow: 0 10px 28px rgba(45, 26, 14, 0.18);
+  --shadow-sm: 0 4px 14px rgba(45, 26, 14, 0.14);
+}
+[data-theme='moonlit'] {
+  --shadow: 0 10px 28px rgba(26, 37, 53, 0.18);
+  --shadow-sm: 0 4px 14px rgba(26, 37, 53, 0.14);
+}
+[data-theme='dawn'] {
+  --shadow: 0 10px 28px rgba(58, 26, 38, 0.14);
+  --shadow-sm: 0 4px 14px rgba(58, 26, 38, 0.12);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: 'Cormorant Garamond', 'Georgia', serif;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s var(--ease), color 0.25s var(--ease);
+}
+
+h1, h2, h3 { color: var(--heading); margin: 0; }
+
+a { color: var(--accent); }
+
+/* ── Shared primitives ── */
+
+.card {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn {
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  cursor: pointer;
+  transition: opacity 0.15s var(--ease), transform 0.15s var(--ease);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.btn:active { transform: none; opacity: 1; }
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.btn.ghost:hover { color: var(--ink); border-color: var(--muted); }
+.btn.icon-btn {
+  padding: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  border-radius: var(--r-sm);
+}
+.btn.icon-btn:hover { color: var(--ink); background: var(--line); }
+.btn.icon-btn.active { color: var(--accent); }
+
+.tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border-radius: var(--r-pill);
+  padding: 3px 9px;
+}
+
+.muted { color: var(--muted); }
+
+.cinzel {
+  font-family: 'Cinzel Decorative', serif;
+  letter-spacing: 0.04em;
+}
+
+/* ── Paper rule patterns — applied to .editor-paper ── */
+.paper-lined {
+  background-image: repeating-linear-gradient(
+    transparent, transparent 31px, var(--ruler) 31px, var(--ruler) 32px
+  );
+  background-size: 100% 32px;
+  background-attachment: local;
+}
+.paper-dotted {
+  background-image: radial-gradient(circle, var(--ruler) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.paper-grid {
+  background-image:
+    linear-gradient(var(--ruler) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ruler) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── App shell ── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-header .brand {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--heading);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.header-spacer { flex: 1; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }

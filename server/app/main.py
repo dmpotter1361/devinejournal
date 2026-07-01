@@ -28,7 +28,7 @@ app.include_router(voice_memos.router, prefix="/api")
 def health():
     return {"status": "ok", "version": "0.1.0"}
 
-# Serve Flutter web build — must be last
+# Serve React/Vite build — must be last (vite build outDir: ../server/static)
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists() and any(static_dir.iterdir()):
     app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
