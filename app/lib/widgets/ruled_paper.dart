@@ -19,9 +19,21 @@ class RuledPaper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (style == PaperStyle.plain) return child;
-    return CustomPaint(
-      painter: _PaperPainter(style: style, color: lineColor, spacing: spacing),
-      child: child,
+
+    // Stack(expand) gives TIGHT constraints to both children:
+    // - CustomPaint (no child) fills the full viewport and paints lines across it
+    // - child (SingleChildScrollView) also fills the full viewport and scrolls on top
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        RepaintBoundary(
+          child: CustomPaint(
+            painter: _PaperPainter(
+                style: style, color: lineColor, spacing: spacing),
+          ),
+        ),
+        child,
+      ],
     );
   }
 }
@@ -31,7 +43,8 @@ class _PaperPainter extends CustomPainter {
   final Color color;
   final double spacing;
 
-  const _PaperPainter({required this.style, required this.color, required this.spacing});
+  const _PaperPainter(
+      {required this.style, required this.color, required this.spacing});
 
   @override
   void paint(Canvas canvas, Size size) {

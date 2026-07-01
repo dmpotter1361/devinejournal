@@ -756,27 +756,27 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                 const SizedBox(width: 6),
                 Text(
                   '${yearsAgo == 1 ? '1 year' : '$yearsAgo years'} ago today',
-                  style: TextStyle(color: t.accent, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+                  style: TextStyle(color: t.accent, fontSize: 16, fontWeight: FontWeight.w700, letterSpacing: 0.5),
                 ),
                 const Spacer(),
                 if (mood.isNotEmpty)
                   Container(
-                    width: 26, height: 26,
+                    width: 32, height: 32,
                     decoration: BoxDecoration(
                       color: moodColor.withValues(alpha: 0.15), shape: BoxShape.circle,
                     ),
-                    child: Center(child: Text(mood, style: const TextStyle(fontSize: 14))),
+                    child: Center(child: Text(mood, style: const TextStyle(fontSize: 18))),
                   ),
               ],
             ),
             const SizedBox(height: 6),
             Text(
               title.isNotEmpty ? title : 'Untitled',
-              style: GoogleFonts.cormorant(color: t.heading, fontSize: 20, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic),
+              style: GoogleFonts.cormorant(color: t.heading, fontSize: 22, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic),
             ),
             if (preview.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(preview, style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 15, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(preview, style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 17, height: 1.45), maxLines: 2, overflow: TextOverflow.ellipsis),
             ],
           ],
         ),
@@ -850,12 +850,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                   const Text('🔒', style: TextStyle(fontSize: 20))
                 else ...[
                   Text(month.toUpperCase(),
-                    style: TextStyle(color: mood.isNotEmpty ? moodColor : t.muted, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                    style: TextStyle(color: mood.isNotEmpty ? moodColor : t.muted, fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
                   const SizedBox(height: 2),
                   Text(day,
-                    style: GoogleFonts.cinzelDecorative(color: t.heading, fontSize: 24, fontWeight: FontWeight.w700, height: 1)),
+                    style: GoogleFonts.cinzelDecorative(color: t.heading, fontSize: 26, fontWeight: FontWeight.w700, height: 1)),
                   const SizedBox(height: 2),
-                  Text(year, style: TextStyle(color: t.muted, fontSize: 12)),
+                  Text(year, style: TextStyle(color: t.muted, fontSize: 14)),
                 ],
               ]),
             ),
@@ -897,7 +897,7 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                               shape: BoxShape.circle,
                               border: Border.all(color: moodColor.withValues(alpha: 0.4), width: 0.7),
                             ),
-                            child: Center(child: Text(mood, style: const TextStyle(fontSize: 14))),
+                            child: Center(child: Text(mood, style: const TextStyle(fontSize: 18))),
                           ),
                         ),
                     ]),
@@ -908,12 +908,12 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                         final lu = DateTime.tryParse(entry['locked_until'] as String? ?? '');
                         return Text(
                           lu != null ? 'Opens ${DateFormat('MMM d, yyyy').format(lu.toLocal())}' : 'Sealed',
-                          style: TextStyle(color: t.muted, fontSize: 15, fontStyle: FontStyle.italic),
+                          style: TextStyle(color: t.muted, fontSize: 17, fontStyle: FontStyle.italic),
                         );
                       }),
                     ] else if (preview.isNotEmpty) ...[
                       Text(preview,
-                        style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 15, height: 1.5),
+                        style: TextStyle(color: t.ink.withValues(alpha: 0.65), fontSize: 17, height: 1.5),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -926,13 +926,13 @@ class _TimelineScreenState extends State<TimelineScreen> with SingleTickerProvid
                         children: tags.map((tag) => GestureDetector(
                           onTap: () => setState(() => _activeTag = tag),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
                               color: t.accent.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(color: t.accent.withValues(alpha: 0.25), width: 0.6),
                             ),
-                            child: Text('#$tag', style: TextStyle(color: t.accent, fontSize: 13, fontWeight: FontWeight.w600)),
+                            child: Text('#$tag', style: TextStyle(color: t.accent, fontSize: 15, fontWeight: FontWeight.w600)),
                           ),
                         )).toList(),
                       ),

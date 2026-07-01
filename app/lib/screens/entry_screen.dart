@@ -58,12 +58,23 @@ class _TextBlock {
 class _ImageBlock {
   Map<String, dynamic> photo;
   final TextEditingController captionCtrl;
+  final TextEditingController sideTextCtrl;
+  String align;     // 'left' | 'center' | 'right'
+  double? widthPx;  // null = auto (full-width for center, ~42% for float)
   final bool isPending;
+
   _ImageBlock(Map<String, dynamic> p)
       : photo = Map<String, dynamic>.from(p),
         captionCtrl = TextEditingController(text: p['caption'] as String? ?? ''),
+        sideTextCtrl = TextEditingController(text: p['side_text'] as String? ?? ''),
+        align = p['align'] as String? ?? 'center',
+        widthPx = (p['width_px'] as num?)?.toDouble(),
         isPending = (p['_pending'] as bool?) ?? false;
-  void dispose() => captionCtrl.dispose();
+
+  void dispose() {
+    captionCtrl.dispose();
+    sideTextCtrl.dispose();
+  }
 }
 
 // ── EntryScreen ───────────────────────────────────────────────────────────────
@@ -168,8 +179,14 @@ class _EntryScreenState extends State<EntryScreen> {
             if (item['type'] == 'text') {
               _blocks.add(_TextBlock(item['content'] as String? ?? ''));
             } else if (item['type'] == 'image') {
-              _blocks.add(_ImageBlock(
-                  {'id': item['photo_id'] as String? ?? '', '_pending': true}));
+              _blocks.add(_ImageBlock({
+                'id': item['photo_id'] as String? ?? '',
+                '_pending': true,
+                'align': item['align'] ?? 'center',
+                'width_px': item['width_px'],
+                'side_text': item['side_text'] ?? '',
+                'caption': item['caption'] ?? '',
+              }));
             }
           }
         }
@@ -190,9 +207,17 @@ class _EntryScreenState extends State<EntryScreen> {
     final list = <Map<String, dynamic>>[];
     for (final b in _blocks) {
       if (b is _TextBlock) {
-        list.add({'type': 'text', 'content': (b as _TextBlock).ctrl.text});
-      } else if (b is _ImageBlock && !(b as _ImageBlock).isPending) {
-        list.add({'type': 'image', 'photo_id': (b as _ImageBlock).photo['id'] as String? ?? ''});
+        list.add({'type': 'text', 'content': b.ctrl.text});
+      } else if (b is _ImageBlock && !b.isPending) {
+        final entry = <String, dynamic>{
+          'type': 'image',
+          'photo_id': b.photo['id'] as String? ?? '',
+          'align': b.align,
+        };
+        if (b.widthPx != null) entry['width_px'] = b.widthPx;
+        if (b.sideTextCtrl.text.isNotEmpty) entry['side_text'] = b.sideTextCtrl.text;
+        if (b.captionCtrl.text.isNotEmpty) entry['caption'] = b.captionCtrl.text;
+        list.add(entry);
       }
     }
     return jsonEncode(list);
@@ -269,15 +294,29 @@ class _EntryScreenState extends State<EntryScreen> {
       setState(() {
         final photoMap = {for (final p in photos) p['id'] as String: p};
 
-        // Resolve pending image blocks with real photo data
+        // Resolve pending image blocks — preserve layout metadata from body JSON
         for (int i = 0; i < _blocks.length; i++) {
           final b = _blocks[i];
           if (b is _ImageBlock && b.isPending) {
             final id = b.photo['id'] as String;
+            final savedAlign = b.align;
+            final savedWidthPx = b.widthPx;
+            final savedSideText = b.sideTextCtrl.text;
+            final savedCaption = b.captionCtrl.text;
             b.dispose();
             final data = photoMap[id];
             if (data != null) {
-              _blocks[i] = _ImageBlock(data);
+              final merged = {
+                ...data,
+                'align': savedAlign,
+                if (savedWidthPx != null) 'width_px': savedWidthPx,
+                'side_text': savedSideText,
+                // prefer caption from body JSON (if set), else fall back to API
+                'caption': savedCaption.isNotEmpty
+                    ? savedCaption
+                    : (data['caption'] as String? ?? ''),
+              };
+              _blocks[i] = _ImageBlock(merged);
             } else {
               _blocks.removeAt(i--);
             }
@@ -431,32 +470,6 @@ class _EntryScreenState extends State<EntryScreen> {
     }
   }
 
-  Future<void> _updateImageLayout(int blockIdx,
-      {String? widthPct, String? align}) async {
-    if (blockIdx < 0 ||
-        blockIdx >= _blocks.length ||
-        _blocks[blockIdx] is! _ImageBlock) return;
-    final block = _blocks[blockIdx] as _ImageBlock;
-    if (widthPct != null) setState(() => block.photo['width_pct'] = widthPct);
-    if (align != null) setState(() => block.photo['align'] = align);
-    try {
-      await ApiService.updatePhoto(block.photo['id'] as String,
-          widthPct: widthPct, align: align);
-    } catch (_) {}
-  }
-
-  Future<void> _saveImageCaption(int blockIdx) async {
-    if (blockIdx < 0 ||
-        blockIdx >= _blocks.length ||
-        _blocks[blockIdx] is! _ImageBlock) return;
-    final block = _blocks[blockIdx] as _ImageBlock;
-    try {
-      final caption = block.captionCtrl.text;
-      await ApiService.updatePhoto(block.photo['id'] as String, caption: caption);
-      if (mounted) setState(() => block.photo['caption'] = caption);
-    } catch (_) {}
-  }
-
   void _moveBlockUp(int blockIdx) {
     if (blockIdx <= 0 || blockIdx >= _blocks.length) return;
     setState(() {
@@ -603,18 +616,6 @@ class _EntryScreenState extends State<EntryScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      // Flush pending captions
-      for (final b in _blocks) {
-        if (b is _ImageBlock && !b.isPending) {
-          final typed = b.captionCtrl.text;
-          final stored = b.photo['caption'] as String? ?? '';
-          if (typed != stored) {
-            await ApiService.updatePhoto(b.photo['id'] as String,
-                caption: typed);
-          }
-        }
-      }
-
       final body = _serializeBody();
       final luStr = _lockedUntil?.toUtc().toIso8601String();
       if (_entryId != null) {
@@ -820,191 +821,240 @@ class _EntryScreenState extends State<EntryScreen> {
     return widgets;
   }
 
-  Widget _imageBlockWidget(_ImageBlock block, int blockIdx, PaperTheme t) {
-    final photo = block.photo;
-    final pct = int.tryParse(photo['width_pct'] as String? ?? '100') ?? 100;
-    final align = photo['align'] as String? ?? 'center';
-    final data = photo['data'] as String? ?? '';
+  // ── Image block widget — float left/right or centered with drag-to-resize ──
 
-    final crossAlign = switch (align) {
-      'left' => CrossAxisAlignment.start,
-      'right' => CrossAxisAlignment.end,
-      _ => CrossAxisAlignment.center,
-    };
-    final captionAlign = switch (align) {
-      'left' => TextAlign.left,
-      'right' => TextAlign.right,
-      _ => TextAlign.center,
-    };
-    final alignBtns = <(String, IconData)>[
-      ('left', Icons.format_align_left_rounded),
-      ('center', Icons.format_align_center_rounded),
-      ('right', Icons.format_align_right_rounded),
-    ];
+  Widget _imageBlockWidget(_ImageBlock block, int blockIdx, PaperTheme t) {
+    final data = block.photo['data'] as String? ?? '';
+    final bytes = _base64ToBytes(data);
 
     return LayoutBuilder(builder: (ctx, constraints) {
-      final imgW = constraints.maxWidth * pct / 100;
-      final bytes = _base64ToBytes(data);
+      final containerW = constraints.maxWidth;
+      final defaultFloatW = (containerW * 0.42).clamp(80.0, containerW - 40);
+      final rawW = block.widthPx ?? (block.align == 'center' ? containerW : defaultFloatW);
+      final imgW = rawW.clamp(80.0, containerW - 4);
 
+      // The image itself with a drag-to-resize corner handle
+      Widget imageWidget = Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.memory(bytes, width: imgW, fit: BoxFit.cover),
+          ),
+          if (!_previewMode)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: GestureDetector(
+                onPanUpdate: (d) => setState(() {
+                  block.widthPx =
+                      (imgW + d.delta.dx).clamp(80.0, containerW - 4);
+                  _dirty = true;
+                }),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeUpLeftDownRight,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: t.accent,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(7),
+                        bottomRight: Radius.circular(10),
+                      ),
+                    ),
+                    child: const Icon(Icons.open_in_full_rounded,
+                        size: 12, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+
+      // Alignment / float button row
+      Widget controlBar() {
+        final alignItems = [
+          ('left', Icons.format_align_left_rounded, 'Float left'),
+          ('center', Icons.format_align_center_rounded, 'Center'),
+          ('right', Icons.format_align_right_rounded, 'Float right'),
+        ];
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...alignItems.map((a) {
+                final sel = block.align == a.$1;
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    block.align = a.$1;
+                    if (a.$1 == 'center') block.widthPx = null;
+                    _dirty = true;
+                  }),
+                  child: Tooltip(
+                    message: a.$3,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? t.accent.withValues(alpha: 0.15)
+                            : t.bg,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                            color: sel ? t.accent : t.border,
+                            width: sel ? 1.3 : 0.6),
+                      ),
+                      child: Icon(a.$2,
+                          size: 16,
+                          color: sel ? t.accent : t.muted),
+                    ),
+                  ),
+                );
+              }),
+              const SizedBox(width: 8),
+              // Move up / down
+              if (blockIdx > 0) _imgBtn(Icons.arrow_upward_rounded, () => _moveBlockUp(blockIdx), t),
+              if (blockIdx < _blocks.length - 1) _imgBtn(Icons.arrow_downward_rounded, () => _moveBlockDown(blockIdx), t),
+              const SizedBox(width: 8),
+              // Delete
+              GestureDetector(
+                onTap: () => _removeImageBlock(blockIdx),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(
+                        color: Colors.redAccent.withValues(alpha: 0.3),
+                        width: 0.6),
+                  ),
+                  child: const Icon(Icons.delete_outline_rounded,
+                      size: 16, color: Colors.redAccent),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Side text field (float left/right)
+      Widget sideText({required double fontSize}) {
+        if (_previewMode) {
+          return MarkdownBody(
+            data: block.sideTextCtrl.text,
+            styleSheet: MarkdownStyleSheet(
+              p: GoogleFonts.lora(color: t.ink, fontSize: fontSize, height: 1.9),
+            ),
+          );
+        }
+        return TextField(
+          controller: block.sideTextCtrl,
+          maxLines: null,
+          style: GoogleFonts.lora(color: t.ink, fontSize: fontSize, height: 1.9),
+          decoration: InputDecoration(
+            hintText: 'Write beside image…',
+            hintStyle: GoogleFonts.lora(
+                color: t.muted.withValues(alpha: 0.38),
+                fontSize: fontSize,
+                fontStyle: FontStyle.italic),
+            border: InputBorder.none,
+          ),
+          onChanged: (_) => _mark(),
+        );
+      }
+
+      // Caption (center mode only)
+      Widget captionField() => TextField(
+        controller: block.captionCtrl,
+        readOnly: _previewMode,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.lora(
+            color: t.muted, fontSize: 14, fontStyle: FontStyle.italic),
+        decoration: InputDecoration(
+          hintText: _previewMode ? '' : 'Caption…',
+          hintStyle: TextStyle(
+              color: t.muted.withValues(alpha: 0.4),
+              fontSize: 14,
+              fontStyle: FontStyle.italic),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 4),
+        ),
+        onChanged: (_) => _mark(),
+      );
+
+      // ── Render ──────────────────────────────────────────────────────────────
+
+      if (block.align == 'left') {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  imageWidget,
+                  const SizedBox(width: 14),
+                  Expanded(child: sideText(fontSize: 18)),
+                ],
+              ),
+              if (!_previewMode) controlBar(),
+            ],
+          ),
+        );
+      }
+
+      if (block.align == 'right') {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: sideText(fontSize: 18)),
+                  const SizedBox(width: 14),
+                  imageWidget,
+                ],
+              ),
+              if (!_previewMode) controlBar(),
+            ],
+          ),
+        );
+      }
+
+      // center
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
-          crossAxisAlignment: crossAlign,
           children: [
-            // Move up / down controls
-            if (!_previewMode)
-              Align(
-                alignment: Alignment.centerRight,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (blockIdx > 0)
-                    _moveBtn(Icons.keyboard_arrow_up_rounded,
-                        () => _moveBlockUp(blockIdx), t),
-                  if (blockIdx < _blocks.length - 1)
-                    _moveBtn(Icons.keyboard_arrow_down_rounded,
-                        () => _moveBlockDown(blockIdx), t),
-                ]),
-              ),
-            const SizedBox(height: 4),
-            // Image
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.memory(bytes, width: imgW, fit: BoxFit.cover),
-            ),
-            const SizedBox(height: 8),
-            // Controls (edit mode only)
-            if (!_previewMode)
-              SizedBox(
-                width: imgW,
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    // Width presets
-                    ...['25', '50', '75', '100'].map((p) {
-                      final sel = pct == int.parse(p);
-                      return GestureDetector(
-                        onTap: () =>
-                            _updateImageLayout(blockIdx, widthPct: p),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: sel
-                                ? t.accent.withValues(alpha: 0.15)
-                                : t.bg,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                                color: sel ? t.accent : t.border,
-                                width: sel ? 1.2 : 0.6),
-                          ),
-                          child: Text('$p%',
-                              style: TextStyle(
-                                  color: sel ? t.accent : t.muted,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                      );
-                    }),
-                    Container(
-                        width: 1,
-                        height: 22,
-                        margin:
-                            const EdgeInsets.symmetric(horizontal: 2),
-                        color: t.border),
-                    // Align buttons (only when not full width)
-                    if (pct < 100)
-                      ...alignBtns.map((a) {
-                        final sel = align == a.$1;
-                        return GestureDetector(
-                          onTap: () =>
-                              _updateImageLayout(blockIdx, align: a.$1),
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              color: sel
-                                  ? t.accent.withValues(alpha: 0.15)
-                                  : t.bg,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(
-                                  color: sel ? t.accent : t.border,
-                                  width: sel ? 1.2 : 0.6),
-                            ),
-                            child: Icon(a.$2,
-                                size: 15,
-                                color: sel ? t.accent : t.muted),
-                          ),
-                        );
-                      }),
-                    if (pct < 100)
-                      Container(
-                          width: 1,
-                          height: 22,
-                          margin: const EdgeInsets.symmetric(horizontal: 2),
-                          color: t.border),
-                    // Delete
-                    GestureDetector(
-                      onTap: () => _removeImageBlock(blockIdx),
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: Colors.redAccent.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                              color: Colors.redAccent.withValues(alpha: 0.3),
-                              width: 0.6),
-                        ),
-                        child: const Icon(Icons.delete_outline_rounded,
-                            size: 15, color: Colors.redAccent),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            // Caption
-            SizedBox(
-              width: imgW,
-              child: TextField(
-                controller: block.captionCtrl,
-                textAlign: captionAlign,
-                readOnly: _previewMode,
-                style: GoogleFonts.lora(
-                    color: t.muted,
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic),
-                decoration: InputDecoration(
-                  hintText: _previewMode ? '' : 'Add a caption…',
-                  hintStyle: TextStyle(
-                      color: t.muted.withValues(alpha: 0.4),
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic),
-                  border: InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 4),
-                ),
-                onSubmitted: (_) => _saveImageCaption(blockIdx),
-              ),
-            ),
+            imageWidget,
+            SizedBox(width: imgW, child: captionField()),
+            if (!_previewMode) controlBar(),
           ],
         ),
       );
     });
   }
 
-  Widget _moveBtn(IconData icon, VoidCallback onTap, PaperTheme t) {
+  Widget _imgBtn(IconData icon, VoidCallback onTap, PaperTheme t) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(left: 4, bottom: 4),
-        padding: const EdgeInsets.all(5),
+        width: 36,
+        height: 36,
+        margin: const EdgeInsets.only(right: 4),
         decoration: BoxDecoration(
           color: t.card,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(7),
           border: Border.all(color: t.border, width: 0.6),
         ),
-        child: Icon(icon, size: 14, color: t.muted),
+        child: Icon(icon, size: 16, color: t.muted),
       ),
     );
   }
@@ -1107,7 +1157,7 @@ class _EntryScreenState extends State<EntryScreen> {
                                   _markdownToolbar(t),
                                 if (!_previewMode)
                                   const SizedBox(height: 6),
-                                ..._buildBlockList(t, fontSize: 18),
+                                ..._buildBlockList(t, fontSize: 20),
                                 _voiceMemosSection(t),
                               ],
                             ),
@@ -1261,7 +1311,7 @@ class _EntryScreenState extends State<EntryScreen> {
                             ),
                           if (!_previewMode) _markdownToolbar(t),
                           if (!_previewMode) const SizedBox(height: 6),
-                          ..._buildBlockList(t, fontSize: 17),
+                          ..._buildBlockList(t, fontSize: 18),
                           _voiceMemosSection(t),
                         ],
                       ),

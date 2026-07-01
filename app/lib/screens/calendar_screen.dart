@@ -25,6 +25,10 @@ const _moodColors = {
   '🌠': Color(0xFF7986cb),
 };
 
+const _daysFull   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const _daysShort  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const _daysMini   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
 class CalendarScreen extends StatefulWidget {
   final List<Map<String, dynamic>> entries;
   final VoidCallback onRefresh;
@@ -49,7 +53,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _month = DateTime(now.year, now.month);
   }
 
-  // Returns ALL entries grouped by date key (yyyy-MM-dd)
   Map<String, List<Map<String, dynamic>>> get _entriesByDate {
     final map = <String, List<Map<String, dynamic>>>{};
     for (final e in widget.entries) {
@@ -89,7 +92,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         children: [
           const SizedBox(height: 8),
           Container(
-            width: 36,
+            width: 40,
             height: 4,
             decoration: BoxDecoration(
               color: t.border,
@@ -97,12 +100,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
             child: Text(
               DateFormat('EEEE, MMMM d').format(date),
               style: GoogleFonts.cormorant(
                   color: t.heading,
-                  fontSize: 18,
+                  fontSize: 22,
                   fontWeight: FontWeight.w700,
                   fontStyle: FontStyle.italic),
             ),
@@ -111,19 +114,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
             final mood = e['mood'] as String? ?? '';
             final title = (e['title'] as String? ?? '').trim();
             return ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
               leading: mood.isNotEmpty
-                  ? Text(mood, style: const TextStyle(fontSize: 22))
-                  : Icon(Icons.book_outlined, color: t.muted, size: 22),
+                  ? Text(mood, style: const TextStyle(fontSize: 28))
+                  : Icon(Icons.book_outlined, color: t.muted, size: 28),
               title: Text(
                 title.isNotEmpty ? title : 'Untitled entry',
-                style: TextStyle(color: t.ink, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: t.ink,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600),
               ),
               subtitle: Text(
                 DateFormat('h:mm a').format(
                     DateTime.tryParse(e['created_at'] as String? ?? '')
                             ?.toLocal() ??
                         date),
-                style: TextStyle(color: t.muted, fontSize: 12),
+                style: TextStyle(color: t.muted, fontSize: 15),
               ),
               onTap: () {
                 Navigator.pop(context);
@@ -131,7 +139,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               },
             );
           }),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -160,13 +168,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final isToday = key == todayKey;
       final phase = moonPhaseEmoji(date);
 
-      // Collect non-empty moods
       final moods = dayEntries
           .map((e) => e['mood'] as String? ?? '')
           .where((m) => m.isNotEmpty)
           .toList();
 
-      // Background tint from first mood
       final primaryMoodColor = moods.isNotEmpty
           ? (_moodColors[moods.first] ?? t.accent)
           : null;
@@ -195,54 +201,68 @@ class _CalendarScreenState extends State<CalendarScreen> {
         title: Text(
           'Mood Calendar',
           style: GoogleFonts.cinzelDecorative(
-              color: t.appBarFg, fontSize: 18, fontWeight: FontWeight.w600),
+              color: t.appBarFg, fontSize: 20, fontWeight: FontWeight.w600),
         ),
       ),
       body: Column(
         children: [
-          // Month nav
+          // Month navigation
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             color: t.appBarBg,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: Icon(Icons.chevron_left, color: t.appBarFg),
+                  icon: Icon(Icons.chevron_left, color: t.appBarFg, size: 28),
                   onPressed: _prevMonth,
                 ),
                 Text(
-                  DateFormat('MMMM yyyy').format(_month),
+                  DateFormat('MMMM yyyy').format(_month).toUpperCase(),
                   style: GoogleFonts.cinzelDecorative(
                       color: t.appBarFg,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1),
                 ),
                 IconButton(
-                  icon: Icon(Icons.chevron_right, color: t.appBarFg),
+                  icon: Icon(Icons.chevron_right, color: t.appBarFg, size: 28),
                   onPressed: _nextMonth,
                 ),
               ],
             ),
           ),
 
-          // Day-of-week header
+          // Day-of-week header (responsive: full names on wide, short on narrow)
           Container(
             color: t.card,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-            child: Row(
-              children: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
-                  .map((d) => Expanded(
-                        child: Center(
-                          child: Text(d,
-                              style: TextStyle(
-                                  color: t.muted,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5)),
-                        ),
-                      ))
-                  .toList(),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+            child: LayoutBuilder(
+              builder: (ctx, bc) {
+                final cellW = bc.maxWidth / 7;
+                final labels = cellW >= 110
+                    ? _daysFull
+                    : cellW >= 65
+                        ? _daysShort
+                        : _daysMini;
+                return Row(
+                  children: labels
+                      .map((d) => Expanded(
+                            child: Center(
+                              child: Text(
+                                d,
+                                style: TextStyle(
+                                    color: t.muted,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.3),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ))
+                      .toList(),
+                );
+              },
             ),
           ),
           Divider(color: t.border, height: 0.5, thickness: 0.5),
@@ -253,8 +273,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               padding: const EdgeInsets.all(6),
               child: GridView.count(
                 crossAxisCount: 7,
-                mainAxisSpacing: 4,
-                crossAxisSpacing: 4,
+                mainAxisSpacing: 5,
+                crossAxisSpacing: 5,
+                childAspectRatio: 0.9,
                 children: cells,
               ),
             ),
@@ -294,93 +315,109 @@ class _DayCell extends StatelessWidget {
     final hasEntries = entries.isNotEmpty;
     final bg = moodColor?.withValues(alpha: 0.18) ?? Colors.transparent;
     final borderColor = isToday
-        ? t.accent as Color
-        : moodColor?.withValues(alpha: 0.5) ?? (t.border as Color);
-    final borderWidth = isToday ? 1.8 : (hasEntries ? 0.8 : 0.4);
-
-    // Show up to 3 unique moods
+        ? (t.accent as Color)
+        : moodColor?.withValues(alpha: 0.55) ?? (t.border as Color);
+    final borderWidth = isToday ? 2.5 : (hasEntries ? 1.2 : 0.5);
     final displayMoods = moods.toSet().take(3).toList();
-    final extraCount = entries.length > 1 ? entries.length : 0;
+    final extraCount = entries.length;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(8),
-          border:
-              Border.all(color: borderColor, width: borderWidth),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderColor, width: borderWidth),
         ),
-        child: Stack(
-          children: [
-            // Moon phase — top-right corner
-            Positioned(
-              top: 3,
-              right: 4,
-              child: Text(
-                moonPhase,
-                style: TextStyle(
-                  fontSize: 9,
-                  color: (t.muted as Color).withValues(alpha: hasEntries ? 0.5 : 0.35),
-                ),
-              ),
-            ),
+        child: LayoutBuilder(builder: (ctx, bc) {
+          // Scale emoji and text to the actual cell size
+          final cellH = bc.maxHeight;
+          final emojiSz = cellH < 70
+              ? (displayMoods.length > 1 ? 14.0 : 18.0)
+              : cellH < 110
+                  ? (displayMoods.length > 1 ? 20.0 : 26.0)
+                  : (displayMoods.length > 1 ? 24.0 : 32.0);
+          final daySz = cellH < 70
+              ? 14.0
+              : cellH < 110
+                  ? 20.0
+                  : 26.0;
+          final moonSz = cellH < 70 ? 11.0 : 16.0;
+          final badgeSz = cellH < 70 ? 11.0 : 15.0;
+          final pad = cellH < 70 ? 3.0 : 6.0;
 
-            // Entry count badge — top-left (only if >1)
-            if (extraCount > 1)
-              Positioned(
-                top: 3,
-                left: 4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: (moodColor ?? t.accent as Color).withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '$extraCount',
-                    style: TextStyle(
-                        color: moodColor ?? t.accent as Color,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-
-            // Center content: moods or empty indicator
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (displayMoods.isNotEmpty)
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 0,
-                      children: displayMoods
-                          .map((m) => Text(m,
+          return Column(
+            children: [
+              // Top row: entry count badge + moon phase
+              Padding(
+                padding: EdgeInsets.fromLTRB(pad, pad, pad, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    extraCount > 1
+                        ? Container(
+                            padding: EdgeInsets.symmetric(
+                                horizontal: pad, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: (moodColor ?? t.accent as Color)
+                                  .withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '$extraCount',
                               style: TextStyle(
-                                  fontSize: displayMoods.length > 1 ? 13 : 18)))
-                          .toList(),
-                    )
-                  else
-                    SizedBox(height: hasEntries ? 14 : 0),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$day',
-                    style: TextStyle(
-                      color: hasEntries
-                          ? (moodColor ?? t.heading as Color)
-                          : t.muted as Color,
-                      fontSize: 13,
-                      fontWeight:
-                          hasEntries ? FontWeight.w700 : FontWeight.w400,
+                                  color: moodColor ?? t.accent as Color,
+                                  fontSize: badgeSz,
+                                  fontWeight: FontWeight.w800),
+                            ),
+                          )
+                        : SizedBox(width: badgeSz),
+                    Text(
+                      moonPhase,
+                      style: TextStyle(
+                          fontSize: moonSz,
+                          color: (t.muted as Color)
+                              .withValues(alpha: hasEntries ? 0.65 : 0.4)),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
+
+              // Middle: mood emojis (take remaining space)
+              Expanded(
+                child: Center(
+                  child: displayMoods.isNotEmpty
+                      ? Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 1,
+                          children: displayMoods
+                              .map((m) =>
+                                  Text(m, style: TextStyle(fontSize: emojiSz)))
+                              .toList(),
+                        )
+                      : const SizedBox(),
+                ),
+              ),
+
+              // Day number — prominent, at bottom
+              Padding(
+                padding: EdgeInsets.fromLTRB(pad, 0, pad, pad),
+                child: Text(
+                  '$day',
+                  style: TextStyle(
+                    color: hasEntries
+                        ? (moodColor ?? t.heading as Color)
+                        : (t.muted as Color),
+                    fontSize: daySz,
+                    fontWeight:
+                        hasEntries ? FontWeight.w800 : FontWeight.w400,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }),
       ),
     );
   }
@@ -395,26 +432,25 @@ class _MoodLegend extends StatelessWidget {
     final t = theme;
     final moods = ['✨', '🌙', '🌸', '🔥', '💫', '🌿', '💜', '🌊', '🌻', '🦋'];
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 14),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
       color: t.card,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Divider(color: t.border, height: 10),
+          Divider(color: t.border, height: 12),
           Wrap(
-            spacing: 10,
-            runSpacing: 4,
+            spacing: 12,
+            runSpacing: 6,
             children: moods.map((m) {
               final c = _moodColors[m] ?? t.accent;
               return Row(mainAxisSize: MainAxisSize.min, children: [
                 Container(
-                  width: 8,
-                  height: 8,
-                  decoration:
-                      BoxDecoration(color: c, shape: BoxShape.circle),
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(color: c, shape: BoxShape.circle),
                 ),
-                const SizedBox(width: 3),
-                Text(m, style: const TextStyle(fontSize: 14)),
+                const SizedBox(width: 4),
+                Text(m, style: const TextStyle(fontSize: 18)),
               ]);
             }).toList(),
           ),
