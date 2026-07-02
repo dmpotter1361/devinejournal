@@ -8,6 +8,7 @@ import { CYCLE_DAYS, MS_DAY, GARDEN_STAGES, getStage, isGratitude, buildGarden, 
 import { cardOfTheDay } from '../lib/tarot';
 import { nextSabbat } from '../lib/sabbats';
 import { hasPin, requestLock } from '../lib/pin';
+import { isSealed, opensOn } from '../lib/seal';
 import SecurityModal from '../components/SecurityModal';
 import './Timeline.css';
 
@@ -73,7 +74,7 @@ function EntryCard({ entry, onClick, sealed }) {
   const d = new Date(entry.created_at);
 
   if (sealed) {
-    const opensOn = new Date(entry.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const opensOnStr = opensOn(entry.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
     return (
       <button className={`entry-card entry-card--sealed ${themedClass}`} onClick={onClick} style={{ '--theme-dot': theme.dot }}>
         <div className="ec-date">
@@ -89,7 +90,7 @@ function EntryCard({ entry, onClick, sealed }) {
             <h3 className="ec-title ec-sealed-title">Sealed memory</h3>
             <span className="ec-seal" aria-hidden="true">☾</span>
           </div>
-          <p className="ec-preview ec-sealed-opens">Opens {opensOn}</p>
+          <p className="ec-preview ec-sealed-opens">Opens {opensOnStr}</p>
         </div>
       </button>
     );
@@ -533,11 +534,6 @@ export default function Timeline() {
     nav(`/entry/new?type=${type.id}`);
   };
 
-  const isSealed = (e) => {
-    if (!e.locked_until) return false;
-    return new Date(e.locked_until) > new Date();
-  };
-
   const onThisDay = entries.filter(e => {
     const d = new Date(e.created_at);
     const now = new Date();
@@ -774,7 +770,7 @@ export default function Timeline() {
 
       {/* Sealed memory dialog */}
       {sealedEntry && (() => {
-        const opensOn = new Date(sealedEntry.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        const opensOnStr = opensOn(sealedEntry.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         return (
           <div className="ne-overlay" onClick={() => setSealedEntry(null)}>
             <div className="sealed-dialog" onClick={e => e.stopPropagation()}>
@@ -782,7 +778,7 @@ export default function Timeline() {
               <h3 className="sealed-dialog-title cinzel">Memory Sealed</h3>
               <p className="sealed-dialog-body">
                 {sealedEntry.title ? `"${sealedEntry.title}"` : 'This memory'} will open on<br />
-                <strong>{opensOn}</strong>.<br /><br />
+                <strong>{opensOnStr}</strong>.<br /><br />
                 Come back then — it will be waiting for you.
               </p>
               <button className="btn" onClick={() => setSealedEntry(null)}>I'll wait ✦</button>

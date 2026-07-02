@@ -28,6 +28,7 @@
   flex: 1;
   background: transparent;
   border: 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
   outline: 0;
   color: var(--heading);
   font-family: 'Cinzel Decorative', serif;
@@ -36,8 +37,14 @@
   letter-spacing: 0.04em;
   padding: 4px 8px;
   min-width: 0;
+  transition: border-color 0.2s var(--ease);
 }
-.ee-title-input::placeholder { color: var(--muted); opacity: 0.45; font-style: italic; }
+.ee-title-input:focus { border-bottom-style: solid; border-bottom-color: var(--accent); }
+.ee-title-input::placeholder {
+  color: color-mix(in srgb, var(--accent) 60%, var(--muted));
+  opacity: 0.85;
+  font-style: italic;
+}
 
 /* Save button — "sealing the page". Dirty = warm candlelight pulse; clean = settled seal. */
 .ee-save-btn {
@@ -424,10 +431,11 @@
 
 .ee-date-label {
   font-size: 17px;
-  padding: 8px 28px 0;
+  padding: 10px 28px;
   margin: 0;
   color: var(--muted);
   font-style: italic;
+  text-align: center;
 }
 
 /* Writing prompts — shown in new empty entries */

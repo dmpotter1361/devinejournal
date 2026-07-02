@@ -108,6 +108,13 @@ const TYPE_TEMPLATES = {
   },
 };
 
+// Earliest allowed capsule-open date: tomorrow (local) — a capsule that
+// "opens today" would never actually appear sealed.
+function tomorrowStr() {
+  const d = new Date(Date.now() + 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function pickPrompts(n = 3) {
   const arr = [...JOURNAL_PROMPTS];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -497,7 +504,7 @@ export default function EntryEditor() {
         <button className="back-btn" onClick={goBack} title="Back to your journal">⟵</button>
         <input
           className="ee-title-input"
-          placeholder="Entry title (optional)"
+          placeholder="✎ Give this entry a title…"
           value={title}
           onChange={e => setTitle(e.target.value)}
           maxLength={200}
@@ -612,6 +619,7 @@ export default function EntryEditor() {
               <input
                 className="ee-lock-input"
                 type="date"
+                min={tomorrowStr()}
                 value={lockedUntil ? lockedUntil.split('T')[0] : ''}
                 onChange={e => setLockedUntil(e.target.value)}
               />

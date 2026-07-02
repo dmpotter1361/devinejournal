@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import { isSealed, opensOn } from '../lib/seal';
 import './PrintView.css';
 
 // Body → printable HTML (handles legacy Flutter JSON-block bodies)
@@ -18,8 +19,6 @@ function printableHtml(body) {
   if (s.startsWith('<')) return body;
   return `<p>${body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '</p><p>')}</p>`;
 }
-
-const isSealed = (e) => e.locked_until && new Date(e.locked_until) > new Date();
 
 export default function PrintView() {
   const [entries, setEntries] = useState([]);
@@ -82,7 +81,7 @@ export default function PrintView() {
             </div>
             {e.tags && <p className="pv-entry-tags">{e.tags.split(',').map(t => t.trim()).filter(Boolean).map(t => `#${t}`).join('  ')}</p>}
             {isSealed(e) ? (
-              <p className="pv-sealed">🔒 Sealed until {new Date(e.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+              <p className="pv-sealed">🔒 Sealed until {opensOn(e.locked_until).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
             ) : (
               // eslint-disable-next-line react/no-danger
               <div className="pv-entry-body" dangerouslySetInnerHTML={{ __html: printableHtml(e.body) }} />
