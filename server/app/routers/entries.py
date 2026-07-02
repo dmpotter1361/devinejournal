@@ -39,11 +39,15 @@ def _is_sealed(entry: models.Entry) -> bool:
     if not entry.locked_until:
         return False
     try:
-        opens = datetime.fromisoformat(entry.locked_until.replace("Z", "+00:00"))
-        if opens.tzinfo is None:
-            opens = opens.replace(tzinfo=timezone.utc)
+        date_part = entry.locked_until.split("T")[0]
+        y, m, d = (int(x) for x in date_part.split("-"))
+        # The client unseals at LOCAL midnight of the open date. The server
+        # doesn't know the client's timezone, so hold search results until
+        # 12:00 UTC that day — covers UTC-4..-12, never unseals in search
+        # before the timeline card unlocks.
+        opens = datetime(y, m, d, 12, 0, tzinfo=timezone.utc)
         return opens > datetime.now(timezone.utc)
-    except ValueError:
+    except (ValueError, AttributeError):
         return False
 
 # NOTE: must be registered before /{entry_id} or "search" gets parsed as a UUID

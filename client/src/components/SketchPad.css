@@ -1,0 +1,98 @@
+.sk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+.sk-frame {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  width: min(1060px, 100%);
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  animation: ne-pop 0.2s var(--ease);
+}
+.sk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sk-title { font-size: 16px; color: var(--heading); margin-right: 4px; }
+.sk-inks { display: flex; gap: 7px; }
+.sk-ink {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease);
+}
+.sk-ink.sk-on { border-color: var(--accent); transform: scale(1.18); }
+.sk-sizes { display: flex; gap: 5px; }
+.sk-size {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1;
+}
+.sk-size.sk-on { border-color: var(--accent); color: var(--accent); }
+.sk-tool {
+  width: 38px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-size: 16px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.sk-tool.sk-on { border-color: var(--accent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 35%, transparent); }
+.sk-tool:disabled { opacity: 0.35; cursor: default; }
+.sk-penonly {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.sk-canvas {
+  width: 100%;
+  aspect-ratio: 1000 / 640;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  touch-action: none;
+  cursor: crosshair;
+  display: block;
+  background: #fdfbf5;
+}
+.sk-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.sk-actions .btn { font-size: 16px; padding: 11px 20px; }
+
+@media (max-width: 640px) {
+  .sk-overlay { padding: 6px; }
+  .sk-frame { padding: 10px; }
+  .sk-penonly { margin-left: 0; }
+}

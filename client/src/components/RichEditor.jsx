@@ -9,6 +9,7 @@ import { TextAlign } from '@tiptap/extension-text-align';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { CaptionedImage } from './CaptionedImage';
 import { FontStyles } from './FontStyles';
+import SketchPad from './SketchPad';
 import './RichEditor.css';
 
 const FONTS = [
@@ -59,6 +60,7 @@ function Btn({ on, active, children, title }) {
 export default function RichEditor({ value, onChange, placeholder, paperStyle, insertImageFn }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sketchOpen, setSketchOpen] = useState(false);
   const emojiRef = useRef(null);
   const fileRef = useRef(null);
   const editorRef = useRef(null);
@@ -194,8 +196,20 @@ export default function RichEditor({ value, onChange, placeholder, paperStyle, i
         <Btn on={() => fileRef.current?.click()} active={uploading} title="Insert image">
           {uploading ? '⏳' : '🖼️'}
         </Btn>
+        <Btn on={() => setSketchOpen(true)} active={sketchOpen} title="Handwrite with a stylus or finger">
+          ✍️
+        </Btn>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onPickFile} />
       </div>
+      {sketchOpen && (
+        <SketchPad
+          onClose={() => setSketchOpen(false)}
+          onDone={(src) => {
+            setSketchOpen(false);
+            editor.chain().focus().insertContent([{ type: 'image', attrs: { src } }]).run();
+          }}
+        />
+      )}
       <div className={`editor-paper ${paperStyle ? `paper-${paperStyle}` : ''}`}>
         <EditorContent editor={editor} className="re-content" />
       </div>
