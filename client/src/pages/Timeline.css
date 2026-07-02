@@ -1168,6 +1168,8 @@
 @media (min-width: 1100px) {
   /* On desktop, theme strip in center becomes redundant — collapse it */
   .tl-theme-strip { display: none; }
+  /* Keep the FAB out of the right panel — don't block the candy */
+  .tl-fab { right: 280px; }
 }
 
 @media (max-width: 600px) {
