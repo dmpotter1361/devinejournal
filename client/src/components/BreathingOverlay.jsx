@@ -41,9 +41,9 @@ export default function BreathingOverlay({ onClose }) {
         />
         <p className="br-label cinzel">{phase.label}</p>
         <p className="br-count">
-          {breaths > 0 ? `${breaths} breath${breaths === 1 ? '' : 's'} taken` : 'Follow the light'}
+          {breaths > 0 ? `${breaths} breath${breaths === 1 ? '' : 's'} taken` : 'Follow the light — breathe with it'}
         </p>
-        <button className="br-done" onClick={onClose}>I'm ready ✦</button>
+        <button className="br-done" onClick={onClose}>I'm centered ✦</button>
       </div>
     </div>
   );
