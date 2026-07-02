@@ -1,0 +1,118 @@
+/* ── Lock screen ── */
+.pl-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 45%, transparent) 0.5px, transparent 0.5px),
+    radial-gradient(circle, color-mix(in srgb, var(--accent) 25%, transparent) 1px, transparent 1px);
+  background-size: 127px 113px, 197px 181px;
+  background-position: 7px 11px, 83px 57px;
+}
+.pl-brand { font-size: 24px; color: var(--heading); letter-spacing: 0.06em; }
+.pl-sub { margin: 0 0 8px; font-size: 17px; font-style: italic; color: var(--muted); }
+.pl-forgot {
+  margin-top: 14px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pl-forgot:hover { color: var(--accent); }
+
+/* ── Shared PIN pad ── */
+.pp-wrap { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+.pp-dots { display: flex; gap: 16px; }
+.pp-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  transition: background 0.12s var(--ease);
+}
+.pp-filled { background: var(--accent); box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 50%, transparent); }
+.pp-shake { animation: pp-shake 0.55s var(--ease); }
+@keyframes pp-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-12px); }
+  35% { transform: translateX(10px); }
+  55% { transform: translateX(-7px); }
+  75% { transform: translateX(4px); }
+}
+.pp-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 12px;
+}
+.pp-key {
+  height: 64px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  color: var(--ink);
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 22px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), transform 0.1s var(--ease);
+}
+.pp-key:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.pp-key:active { transform: scale(0.94); }
+.pp-key-ghost { background: transparent; border-color: transparent; font-family: inherit; color: var(--muted); }
+
+/* ── Security modal ── */
+.sec-dialog {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-width: 380px;
+  padding: 20px 22px 24px;
+  animation: ne-pop 0.2s var(--ease);
+}
+.sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sec-title { margin: 0; font-size: 18px; color: var(--heading); }
+.sec-menu { display: flex; flex-direction: column; gap: 12px; }
+.sec-blurb { margin: 0; font-size: 16px; color: var(--muted); line-height: 1.55; }
+.sec-notice { margin: 0; text-align: center; color: var(--accent); font-weight: 600; font-size: 16px; }
+.sec-action { justify-content: center; font-size: 17px; padding: 12px 18px; }
+.sec-timeout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 16px;
+  color: var(--ink);
+}
+.sec-timeout select {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  padding: 7px 10px;
+}
+.sec-note { margin: 0; font-size: 14px; font-style: italic; }
+.sec-pinstep { display: flex; flex-direction: column; align-items: center; gap: 16px; padding-top: 6px; }
+.sec-step-label { margin: 0; font-size: 16px; color: var(--ink); text-align: center; }
+.sec-cancel {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

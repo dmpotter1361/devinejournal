@@ -64,6 +64,65 @@ body {
   transition: background-color 0.25s var(--ease), color 0.25s var(--ease);
 }
 
+/* ── Per-theme background flair ─────────────────────────────────────────
+   A fixed, faint motif layer painted above the shared star field and
+   behind all content. Each theme gets its own character. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  /* Midnight (default): sparse drifting crescents */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><g fill='%23c9a84c' fill-opacity='0.055' font-size='17'><text x='34' y='52'>☾</text><text x='190' y='120' font-size='12'>☽</text><text x='90' y='210' font-size='14'>☾</text></g></svg>");
+  background-size: 260px 260px;
+}
+/* Parchment: paper grain — speckles and drifting fibers */
+[data-theme='parchment'] body::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='170' height='170'><g fill='%238b6b40' fill-opacity='0.09'><circle cx='22' cy='31' r='1'/><circle cx='94' cy='72' r='1.2'/><circle cx='143' cy='22' r='0.8'/><circle cx='63' cy='124' r='1'/><circle cx='126' cy='148' r='1.1'/><circle cx='38' cy='90' r='0.7'/></g><g stroke='%238b6b40' stroke-opacity='0.06' stroke-width='1' fill='none'><path d='M12 82 q22 -5 44 0'/><path d='M100 42 q20 5 40 0'/><path d='M70 152 q17 -4 34 0'/><path d='M130 100 q14 3 28 0'/></g></svg>");
+  background-size: 170px 170px;
+}
+/* Moonlit: soft diagonal moonbeams through the night */
+[data-theme='moonlit'] body::before {
+  background-image: linear-gradient(
+    115deg,
+    transparent 0 14%,
+    rgba(255, 255, 255, 0.05) 14% 19%,
+    transparent 19% 42%,
+    rgba(255, 255, 255, 0.04) 42% 45%,
+    transparent 45% 72%,
+    rgba(255, 255, 255, 0.045) 72% 78%,
+    transparent 78%
+  );
+  background-size: 100% 100%;
+}
+/* Dawn: sunrise glow rising from the horizon */
+[data-theme='dawn'] body::before {
+  background-image:
+    radial-gradient(ellipse 90% 45% at 50% 108%, rgba(255, 176, 140, 0.22), transparent 70%),
+    linear-gradient(to top, rgba(255, 200, 160, 0.10), transparent 45%);
+  background-size: 100% 100%;
+}
+/* Forest: winding vines with small leaves */
+[data-theme='forest'] body::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='210' height='230'><g stroke='%235aaa6e' stroke-opacity='0.10' fill='none' stroke-width='1.2'><path d='M45 0 q20 42 0 84 q-20 42 0 84 q10 22 5 62'/><path d='M158 -10 q-16 52 4 94 q18 42 -6 94'/></g><g fill='%235aaa6e' fill-opacity='0.10'><ellipse cx='53' cy='42' rx='6' ry='3' transform='rotate(32 53 42)'/><ellipse cx='34' cy='114' rx='6' ry='3' transform='rotate(-42 34 114)'/><ellipse cx='55' cy='176' rx='5' ry='2.5' transform='rotate(26 55 176)'/><ellipse cx='166' cy='62' rx='6' ry='3' transform='rotate(-30 166 62)'/><ellipse cx='148' cy='146' rx='5' ry='2.5' transform='rotate(36 148 146)'/></g></svg>");
+  background-size: 210px 230px;
+}
+/* Celestial: concentric orbit rings from a far corner */
+[data-theme='celestial'] body::before {
+  background-image: repeating-radial-gradient(
+    circle at 88% -12%,
+    transparent 0 84px,
+    rgba(179, 157, 255, 0.06) 84px 86px
+  );
+  background-size: 100% 100%;
+}
+/* Rosewood: soft falling petals */
+[data-theme='rosewood'] body::before {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='190' height='190'><g fill='%23e89aac' fill-opacity='0.09'><path d='M32 42 q6 -15 12 0 q-6 13 -12 0'/><path d='M124 32 q7 -16 14 0 q-7 14 -14 0' transform='rotate(42 131 32)'/><path d='M72 124 q6 -15 12 0 q-6 13 -12 0' transform='rotate(-32 78 124)'/><path d='M154 134 q6 -14 12 0 q-6 12 -12 0' transform='rotate(72 160 134)'/><path d='M22 156 q5 -12 10 0 q-5 10 -10 0' transform='rotate(16 27 156)'/></g></svg>");
+  background-size: 190px 190px;
+}
+
 h1, h2, h3 { color: var(--heading); margin: 0; }
 
 a { color: var(--accent); }

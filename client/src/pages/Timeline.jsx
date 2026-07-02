@@ -7,6 +7,8 @@ import { openSearch } from '../components/SearchOverlay';
 import { CYCLE_DAYS, MS_DAY, GARDEN_STAGES, getStage, isGratitude, buildGarden, bloomMonth } from '../lib/garden';
 import { cardOfTheDay } from '../lib/tarot';
 import { nextSabbat } from '../lib/sabbats';
+import { hasPin, requestLock } from '../lib/pin';
+import SecurityModal from '../components/SecurityModal';
 import './Timeline.css';
 
 const ENTRY_TYPES = [
@@ -488,6 +490,7 @@ export default function Timeline() {
   const menuRef = useRef(null);
 
   const [sealedEntry, setSealedEntry] = useState(null); // entry being shown in lock dialog
+  const [securityOpen, setSecurityOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -578,6 +581,10 @@ export default function Timeline() {
               <button className="tl-menu-item" onClick={() => nav('/garden')}>🌸 Gratitude Garden</button>
               <button className="tl-menu-item" onClick={() => nav('/review')}>🔮 Year in Review</button>
               <button className="tl-menu-item" onClick={() => nav('/print')}>🖨️ Print journal</button>
+              {hasPin() && (
+                <button className="tl-menu-item" onClick={() => { setMenuOpen(false); requestLock(); }}>🔒 Lock journal</button>
+              )}
+              <button className="tl-menu-item" onClick={() => { setMenuOpen(false); setSecurityOpen(true); }}>🛡️ Security</button>
               <button className="tl-menu-item danger" onClick={signOut}>🚪 Sign out</button>
             </div>
           )}
@@ -761,6 +768,9 @@ export default function Timeline() {
           onSelect={handleNewType}
         />
       )}
+
+      {/* Security settings */}
+      {securityOpen && <SecurityModal onClose={() => setSecurityOpen(false)} />}
 
       {/* Sealed memory dialog */}
       {sealedEntry && (() => {

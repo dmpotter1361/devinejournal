@@ -8,6 +8,7 @@ import Garden from './pages/Garden';
 import Review from './pages/Review';
 import PrintView from './pages/PrintView';
 import SearchOverlay from './components/SearchOverlay';
+import PinLock from './components/PinLock';
 
 function Private({ children }) {
   return getToken() ? children : <Navigate to="/" replace />;
@@ -20,6 +21,7 @@ function Root() {
 export default function App() {
   return (
     <BrowserRouter>
+      <PinLock />
       <SearchOverlay />
       <Routes>
         <Route path="/" element={<Root />} />
