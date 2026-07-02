@@ -1,0 +1,70 @@
+/* Print view — screen shows a paper preview; @media print strips the chrome. */
+.pv-page { min-height: 100vh; }
+
+.pv-controls { gap: 14px; flex-wrap: wrap; }
+.pv-title { color: var(--heading); font-size: 17px; flex-shrink: 0; }
+.pv-range { display: flex; gap: 12px; margin-left: auto; }
+.pv-range-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--muted);
+}
+.pv-range-label input {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  padding: 5px 8px;
+}
+
+/* Always paper-white for readability and printer friendliness */
+.pv-paper {
+  max-width: 720px;
+  margin: 24px auto 60px;
+  background: #fdfbf5;
+  color: #2a2018;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 48px 52px;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+.pv-cover { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #d8cbb4; padding-bottom: 26px; }
+.pv-cover-title { font-family: 'Cinzel Decorative', serif; font-size: 30px; color: #6b5433; margin: 0 0 8px; }
+.pv-cover-sub { color: #8a7a5f; font-style: italic; margin: 0; font-size: 16px; }
+
+.pv-state { text-align: center; color: #8a7a5f; font-style: italic; padding: 30px 0; }
+
+.pv-entry { margin-bottom: 34px; page-break-inside: avoid; }
+.pv-entry-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.pv-entry-title { font-family: 'Cinzel Decorative', serif; font-size: 19px; color: #4a3620; margin: 0; }
+.pv-entry-date { font-size: 14px; color: #8a7a5f; font-style: italic; }
+.pv-entry-tags { font-size: 14px; color: #a08a5f; margin: 3px 0 0; }
+.pv-sealed { font-style: italic; color: #8a7a5f; }
+.pv-entry-body {
+  margin-top: 8px;
+  font-size: 17px;
+  line-height: 1.75;
+  border-top: 1px solid #e8ddc8;
+  padding-top: 8px;
+}
+.pv-entry-body img { max-width: 100%; border-radius: 4px; }
+.pv-entry-body figure { margin: 10px 0; }
+.pv-entry-body figcaption { font-size: 14px; color: #8a7a5f; font-style: italic; text-align: center; }
+
+@media print {
+  body { background: #fff !important; }
+  .pv-controls { display: none !important; }
+  .pv-paper {
+    max-width: none;
+    margin: 0;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    background: #fff;
+  }
+}

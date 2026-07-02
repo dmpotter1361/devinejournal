@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getToken } from '../api';
 import { moodColor } from '../moods';
+import { editorDirty } from '../lib/dirty';
 import './SearchOverlay.css';
 
 export const OPEN_SEARCH_EVENT = 'dj:open-search';
@@ -111,6 +112,8 @@ export default function SearchOverlay() {
   }, [query, open]);
 
   const openEntry = useCallback((entry) => {
+    // Don't silently navigate away from an editor with unsaved changes
+    if (editorDirty.current && !window.confirm('You have unsaved changes. Leave without saving?')) return;
     close();
     nav(`/entry/${entry.id}`);
   }, [close, nav]);

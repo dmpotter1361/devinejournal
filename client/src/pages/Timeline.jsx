@@ -4,6 +4,9 @@ import { api, clearAuth, getUser } from '../api';
 import { MOODS, moodColor } from '../moods';
 import { THEMES, themeById, applyTheme } from '../themes';
 import { openSearch } from '../components/SearchOverlay';
+import { CYCLE_DAYS, MS_DAY, GARDEN_STAGES, getStage, isGratitude, buildGarden, bloomMonth } from '../lib/garden';
+import { cardOfTheDay } from '../lib/tarot';
+import { nextSabbat } from '../lib/sabbats';
 import './Timeline.css';
 
 const ENTRY_TYPES = [
@@ -82,6 +85,7 @@ function EntryCard({ entry, onClick, sealed }) {
         <div className="ec-body">
           <div className="ec-top">
             <h3 className="ec-title ec-sealed-title">Sealed memory</h3>
+            <span className="ec-seal" aria-hidden="true">☾</span>
           </div>
           <p className="ec-preview ec-sealed-opens">Opens {opensOn}</p>
         </div>
@@ -129,79 +133,10 @@ function EntryCard({ entry, onClick, sealed }) {
   );
 }
 
-const GARDEN_STAGES = [
-  { emoji: '',   size: 0,  label: 'Plant your first seed' },
-  { emoji: '🌱', size: 26, label: 'seedling' },
-  { emoji: '🌿', size: 32, label: 'sprouting' },
-  { emoji: '🌷', size: 40, label: 'budding' },
-  { emoji: '🌸', size: 48, label: 'blossoming' },
-  { emoji: '🌺', size: 56, label: 'in full bloom' },
-  { emoji: '🌻', size: 64, label: 'radiant' },
-];
-
-function getStage(streak) {
-  if (streak === 0) return 0;
-  if (streak === 1) return 1;
-  if (streak <= 3) return 2;
-  if (streak <= 6) return 3;
-  if (streak <= 13) return 4;
-  return 5;
-}
-
-// Perennial garden: every CYCLE_DAYS written days of gratitude grows one
-// permanent flower ("bloom"), then a fresh seed starts. Everything is derived
-// from entry history — nothing extra is stored.
-const FLOWERS = ['🌻', '🌷', '🌹', '🌸', '🌺', '🪻', '🌼', '💐'];
-const CYCLE_DAYS = 21;
-const MS_DAY = 86400000;
-
-function buildGarden(gratEntries) {
-  const dayKey = (v) => { const x = new Date(v); x.setHours(0, 0, 0, 0); return x.getTime(); };
-  const days = [...new Set(gratEntries.map(e => dayKey(e.created_at)))].sort((a, b) => a - b);
-  const today = dayKey(Date.now());
-
-  // Split into runs; a single missed day (gap ≤ 2) rests the plant, never kills it
-  const runs = [];
-  for (const d of days) {
-    const run = runs[runs.length - 1];
-    if (run && (d - run[run.length - 1]) / MS_DAY <= 2) run.push(d);
-    else runs.push([d]);
-  }
-
-  const blooms = [];
-  for (const run of runs) {
-    for (let n = CYCLE_DAYS; n <= run.length; n += CYCLE_DAYS) {
-      const start = run[n - CYCLE_DAYS];
-      const end = run[n - 1];
-      const entry = gratEntries.find(e => { const k = dayKey(e.created_at); return k >= start && k <= end; });
-      blooms.push({ emoji: FLOWERS[blooms.length % FLOWERS.length], start, end, entryId: entry?.id });
-    }
-  }
-
-  const lastRun = runs[runs.length - 1] || [];
-  const lastDay = lastRun[lastRun.length - 1];
-  const sinceLast = lastDay === undefined ? Infinity : (today - lastDay) / MS_DAY;
-  const alive = sinceLast <= 2;
-  return {
-    blooms,
-    currentDays: alive ? lastRun.length % CYCLE_DAYS : 0,
-    resting: alive && sinceLast >= 1,
-    alive,
-    hadAny: days.length > 0,
-  };
-}
-
-function bloomMonth(b) {
-  return new Date(b.end).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-}
-
 function GratitudeGarden({ entries }) {
   const nav = useNavigate();
   const [picked, setPicked] = useState(null);
-  const gratEntries = entries.filter(e => {
-    const tagList = (e.tags || '').toLowerCase().split(',').map(t => t.trim());
-    return tagList.includes('gratitude');
-  });
+  const gratEntries = entries.filter(isGratitude);
 
   const g = buildGarden(gratEntries);
   const stage = GARDEN_STAGES[getStage(g.currentDays)];
@@ -277,7 +212,9 @@ function GratitudeGarden({ entries }) {
       {/* Nostalgia nudge for a forgotten flower */}
       {!picked && memory && (
         <button className="grat-memory" onClick={() => setPicked(memory)}>
-          Remember this {memory.emoji}? You grew it in {bloomMonth(memory)}.
+          {memory.sampleLine
+            ? <>Remember this {memory.emoji}? “{memory.sampleLine.slice(0, 60)}{memory.sampleLine.length > 60 ? '…' : ''}”</>
+            : <>Remember this {memory.emoji}? You grew it in {bloomMonth(memory)}.</>}
         </button>
       )}
 
@@ -287,6 +224,91 @@ function GratitudeGarden({ entries }) {
           {gratEntries.length} gratitude {gratEntries.length === 1 ? 'entry' : 'entries'}
         </p>
       )}
+      <button className="grat-visit" onClick={() => nav('/garden')}>Visit your garden ✦</button>
+    </div>
+  );
+}
+
+/* ── Card of the Day 🔮 ── */
+function CardOfDay() {
+  const nav = useNavigate();
+  const todayKey = new Date().toDateString();
+  const [drawn, setDrawn] = useState(() => localStorage.getItem('dj_card_day') === todayKey);
+  const card = cardOfTheDay();
+  const draw = () => { localStorage.setItem('dj_card_day', todayKey); setDrawn(true); };
+
+  if (!drawn) {
+    return (
+      <button className="cod-back" onClick={draw}>
+        <span className="cod-back-moon">☾</span>
+        <span className="cod-back-label">Draw today's card ✦</span>
+      </button>
+    );
+  }
+  return (
+    <div className="cod-card">
+      <span className="cod-symbol">{card.symbol}</span>
+      <span className="cod-name cinzel">{card.name}</span>
+      <p className="cod-reading">{card.reading}</p>
+      <button
+        className="cod-journal"
+        onClick={() => nav(`/entry/new?type=reflection&card=${encodeURIComponent(card.name)}`)}
+      >Journal this ✦</button>
+    </div>
+  );
+}
+
+/* ── The familiar 🐈‍⬛ ── */
+function Familiar({ entries }) {
+  const wroteToday = entries.some(e => new Date(e.created_at).toDateString() === new Date().toDateString());
+  return (
+    <div className="fam-box">
+      <div className="fam-scene">
+        <span className={`fam-cat ${wroteToday ? 'fam-awake' : 'fam-asleep'}`}>🐈‍⬛</span>
+        {wroteToday ? <span className="fam-star">✦</span> : <span className="fam-zzz">💤</span>}
+      </div>
+      <p className="fam-caption">
+        {wroteToday ? 'Luna is keeping you company' : 'Luna is napping — write to wake her'}
+      </p>
+    </div>
+  );
+}
+
+/* ── Charm shelf 🧿 — milestones derived from entry history ── */
+function longestStreak(entries) {
+  const days = [...new Set(entries.map(e => { const d = new Date(e.created_at); d.setHours(0, 0, 0, 0); return d.getTime(); }))].sort((a, b) => a - b);
+  let best = days.length ? 1 : 0, cur = 1;
+  for (let i = 1; i < days.length; i++) {
+    if (days[i] - days[i - 1] === MS_DAY) { cur++; best = Math.max(best, cur); } else cur = 1;
+  }
+  return best;
+}
+
+const CHARMS = [
+  { id: 'first',    emoji: '🕯️', name: 'First Light — your first entry',         earned: (es) => es.length > 0 },
+  { id: 'dream',    emoji: '🌙', name: 'Dream Catcher — your first dream log',   earned: (es) => es.some(e => (e.tags || '').toLowerCase().includes('dream')) },
+  { id: 'grateful', emoji: '🙏', name: 'Grateful Heart — your first gratitude',  earned: (es) => es.some(isGratitude) },
+  { id: 'shadow',   emoji: '🖤', name: 'Shadow Walker — your first shadow work', earned: (es) => es.some(e => (e.tags || '').toLowerCase().includes('shadow')) },
+  { id: 'capsule',  emoji: '💌', name: 'Time Weaver — your first sealed memory', earned: (es) => es.some(e => e.locked_until) },
+  { id: 'week',     emoji: '✦',  name: 'Seven Stars — a 7-day writing streak',   earned: (es) => longestStreak(es) >= 7 },
+  { id: 'bloom',    emoji: '🌸', name: 'First Bloom — a full gratitude cycle',   earned: (es) => buildGarden(es.filter(isGratitude)).blooms.length > 0 },
+  { id: 'century',  emoji: '📖', name: 'Century Scribe — one hundred entries',   earned: (es) => es.length >= 100 },
+];
+
+function CharmShelf({ entries }) {
+  const earnedIds = new Set(CHARMS.filter(c => c.earned(entries)).map(c => c.id));
+  return (
+    <div className="charm-shelf">
+      <div className="charm-row">
+        {CHARMS.map(c => (
+          <span
+            key={c.id}
+            className={`charm ${earnedIds.has(c.id) ? 'charm-earned' : ''}`}
+            title={earnedIds.has(c.id) ? c.name : 'A charm awaits…'}
+          >{earnedIds.has(c.id) ? c.emoji : '·'}</span>
+        ))}
+      </div>
+      <p className="charm-count">{earnedIds.size} of {CHARMS.length} charms gathered</p>
     </div>
   );
 }
@@ -428,6 +450,15 @@ function TimelineHeader({ user, entries }) {
         )}
       </div>
       <p className="tl-hc-affirmation">"{todaysAffirmation()}"</p>
+      {(() => {
+        const s = nextSabbat();
+        if (!s || s.daysAway > 7) return null;
+        return (
+          <p className="tl-hc-sabbat">
+            {s.emoji} {s.name} {s.daysAway === 0 ? 'is today ✦' : `is in ${s.daysAway} day${s.daysAway === 1 ? '' : 's'} ✦`}
+          </p>
+        );
+      })()}
       {entries.length > 0 && (
         <div className="tl-hc-stats">
           <span className="tl-hc-stat">{entries.length} entries</span>
@@ -544,6 +575,9 @@ export default function Timeline() {
           {menuOpen && (
             <div className="tl-menu">
               <div className="tl-menu-name">{user?.name || 'Journal'}</div>
+              <button className="tl-menu-item" onClick={() => nav('/garden')}>🌸 Gratitude Garden</button>
+              <button className="tl-menu-item" onClick={() => nav('/review')}>🔮 Year in Review</button>
+              <button className="tl-menu-item" onClick={() => nav('/print')}>🖨️ Print journal</button>
               <button className="tl-menu-item danger" onClick={signOut}>🚪 Sign out</button>
             </div>
           )}
@@ -670,6 +704,11 @@ export default function Timeline() {
 
             <div className="tl-right-divider"><span>✦</span></div>
 
+            <p className="tl-right-heading cinzel">Card of the Day</p>
+            <CardOfDay />
+
+            <div className="tl-right-divider"><span>✦</span></div>
+
             <p className="tl-right-heading cinzel">Theme</p>
             <ThemePicker themes={THEMES} currentId={currentThemeId} onChange={switchTheme} />
 
@@ -678,6 +717,16 @@ export default function Timeline() {
             {/* Gratitude Garden */}
             <p className="tl-right-heading cinzel">Garden</p>
             <GratitudeGarden entries={entries} />
+
+            <div className="tl-right-divider"><span>✦</span></div>
+
+            <p className="tl-right-heading cinzel">Familiar</p>
+            <Familiar entries={entries} />
+
+            <div className="tl-right-divider"><span>✦</span></div>
+
+            <p className="tl-right-heading cinzel">Charms</p>
+            <CharmShelf entries={entries} />
 
             <div className="tl-right-divider"><span>✦</span></div>
 

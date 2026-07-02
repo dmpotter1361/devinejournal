@@ -63,7 +63,7 @@ export const api = {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       body: fd,
     });
-    if (!res.ok) throw new Error('Photo upload failed');
+    if (!res.ok) throw new Error('Image upload failed');
     return res.json();
   },
   deletePhoto: (photoId) => req(`/photos/${photoId}`, 'DELETE'),

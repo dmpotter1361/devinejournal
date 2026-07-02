@@ -285,6 +285,20 @@
 /* ── Sealed entry card ── */
 .entry-card--sealed { opacity: 0.75; }
 .ec-sealed-lock { font-size: 22px !important; font-family: inherit !important; }
+.ec-seal {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #f4c9a0;
+  background: radial-gradient(circle at 38% 32%, #a3364a, #6f1f30 68%, #571626);
+  border: 2px solid #8a2a3d;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.4);
+}
 .ec-sealed-title { font-style: italic; color: var(--muted) !important; }
 .ec-sealed-opens { font-style: italic; }
 
@@ -349,6 +363,14 @@
   padding: 3px 9px;
   flex-shrink: 0;
 }
+.tl-hc-sabbat {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
+
 .tl-hc-affirmation {
   font-family: 'Cormorant Garamond', serif;
   font-size: 17px;
@@ -830,6 +852,139 @@
   cursor: pointer;
 }
 .grat-memory:hover { color: var(--accent); }
+
+.grat-visit {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  margin-top: 2px;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+  cursor: pointer;
+}
+.grat-visit:hover { text-decoration: underline; }
+
+/* ── Card of the Day ── */
+.cod-back {
+  width: 100%;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background:
+    repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 8%, var(--surface-2)) 0 8px, var(--surface-2) 8px 16px);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: inherit;
+  transition: box-shadow 0.25s var(--ease), transform 0.2s var(--ease);
+}
+.cod-back:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.cod-back-moon { font-size: 30px; color: var(--accent); }
+.cod-back-label { font-size: 15px; font-weight: 600; color: var(--accent); }
+.cod-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 10px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, var(--surface-2)), var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: var(--r-sm);
+  animation: cod-flip 0.45s var(--ease);
+}
+@keyframes cod-flip {
+  from { transform: rotateY(85deg); opacity: 0; }
+  to   { transform: rotateY(0); opacity: 1; }
+}
+.cod-symbol { font-size: 32px; line-height: 1; }
+.cod-name { font-size: 15px; color: var(--heading); text-align: center; }
+.cod-reading {
+  margin: 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+.cod-journal {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 3px 8px;
+}
+.cod-journal:hover { text-decoration: underline; }
+
+/* ── The familiar ── */
+.fam-box { text-align: center; }
+.fam-scene { position: relative; display: inline-block; }
+.fam-cat { font-size: 44px; line-height: 1; display: inline-block; }
+.fam-asleep { filter: grayscale(0.3) brightness(0.85); transform: rotate(8deg); }
+.fam-awake { animation: fam-blink 5s ease-in-out infinite; }
+@keyframes fam-blink {
+  0%, 92%, 100% { transform: none; }
+  95%           { transform: scaleY(0.92); }
+}
+.fam-zzz { position: absolute; top: -6px; right: -18px; font-size: 16px; opacity: 0.8; }
+.fam-star {
+  position: absolute;
+  top: 2px;
+  right: -20px;
+  font-size: 14px;
+  color: var(--accent);
+  animation: fam-bat 3.2s ease-in-out infinite;
+}
+@keyframes fam-bat {
+  0%, 100% { transform: translate(0, 0); opacity: 0.9; }
+  30%      { transform: translate(-9px, 9px) rotate(40deg); }
+  55%      { transform: translate(5px, 15px) rotate(-25deg); opacity: 0.6; }
+  80%      { transform: translate(-3px, 4px); }
+}
+.fam-caption {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ── Charm shelf ── */
+.charm-shelf { text-align: center; }
+.charm-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 6px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+  border: 1px solid var(--line);
+  border-bottom: 3px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: var(--r-sm);
+}
+.charm { font-size: 17px; line-height: 1; opacity: 0.25; width: 20px; }
+.charm-earned {
+  opacity: 1;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+.charm-count {
+  margin: 5px 0 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+}
 .grat-streak-num {
   color: var(--accent);
   font-weight: 700;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { moodColor } from '../moods';
+import { sabbatOn } from '../lib/sabbats';
 import './Calendar.css';
 
 const MONTH_NAMES = ['January','February','March','April','May','June',
@@ -96,6 +97,7 @@ export default function Calendar() {
               const isToday = year === today.getFullYear() && month === today.getMonth() && day === today.getDate();
               const isSel = selected?.date?.getDate() === day && selected?.date?.getMonth() === month && selected?.date?.getFullYear() === year;
               const moon = moonPhase(year, month, day);
+              const sabbat = sabbatOn(year, month, day);
               const moodsToShow = dayEntries.filter(e => e.mood).slice(0, 3);
               const extraCount = dayEntries.length > 3 ? dayEntries.length - 3 : 0;
               return (
@@ -106,8 +108,10 @@ export default function Calendar() {
                 >
                   <div className="cal-cell-top">
                     <span className="cal-day-num">{day}</span>
+                    {sabbat && <span className="cal-sabbat" title={sabbat.name}>{sabbat.emoji}</span>}
                     <span className="cal-moon">{moon}</span>
                   </div>
+                  {sabbat && <span className="cal-sabbat-name">{sabbat.name}</span>}
                   {dayEntries.length > 0 && (
                     <div className="cal-cell-bottom">
                       <div className="cal-moods">

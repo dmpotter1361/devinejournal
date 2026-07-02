@@ -191,8 +191,8 @@ export default function RichEditor({ value, onChange, placeholder, paperStyle, i
             </div>
           )}
         </div>
-        <Btn on={() => fileRef.current?.click()} active={uploading} title="Add photo">
-          {uploading ? '⏳' : '📷'}
+        <Btn on={() => fileRef.current?.click()} active={uploading} title="Insert image">
+          {uploading ? '⏳' : '🖼️'}
         </Btn>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={onPickFile} />
       </div>
@@ -223,7 +223,7 @@ async function insertFiles(editor, files, pos, insertRef, setUploading) {
         if (pos != null) chain.setTextSelection(pos);
         chain.insertContent([{ type: 'image', attrs: { src } }]).run();
       } catch (err) {
-        alert('Photo failed: ' + (err.message || 'try again'));
+        alert('Image failed: ' + (err.message || 'try again'));
       }
     }
   } finally {

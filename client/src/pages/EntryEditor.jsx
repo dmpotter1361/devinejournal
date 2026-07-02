@@ -4,6 +4,7 @@ import { api } from '../api';
 import { MOODS, moodColor } from '../moods';
 import { THEMES, themeById } from '../themes';
 import RichEditor, { resizeToBase64 } from '../components/RichEditor';
+import { editorDirty } from '../lib/dirty';
 import './EntryEditor.css';
 
 const PAPER_STYLES = [
@@ -331,17 +332,34 @@ export default function EntryEditor() {
   const [entryId, setEntryId] = useState(id || null);
   const [createdAt, setCreatedAt] = useState('');
   const [prompts] = useState(() => pickPrompts(3));
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [candlelit, setCandlelit] = useState(false);
+  const [sealShow, setSealShow] = useState(false);
   const uploadMemosRef = useRef(null);
   const menuRef = useRef(null);
+  // Snapshot of the last-saved (or freshly-templated) field values — the
+  // baseline for detecting unsaved changes.
+  const snapRef = useRef(null);
 
-  // Apply template for new entries based on type param
+  // Apply template for new entries based on type param (+ Card of the Day prefill)
   useEffect(() => {
-    if (!isNew || !entryType || entryType === 'journal') return;
-    const tpl = TYPE_TEMPLATES[entryType];
-    if (!tpl) return;
-    if (tpl.title) setTitle(tpl.title);
-    if (tpl.body) setBody(tpl.body);
-    if (tpl.tags) setTags(tpl.tags);
+    if (!isNew) return;
+    const tpl = (entryType && TYPE_TEMPLATES[entryType]) || {};
+    const card = searchParams.get('card');
+    let t = tpl.title || '';
+    let b = tpl.body || '';
+    const g = tpl.tags || '';
+    if (card) {
+      t = t || `Card of the Day — ${card}`;
+      b = `<p><strong>🔮 Card of the day: ${card}</strong></p><p>What this card stirs in me…</p>${b}`;
+    }
+    if (t) setTitle(t);
+    if (b) setBody(b);
+    if (g) setTags(g);
+    snapRef.current = JSON.stringify({
+      title: t, body: b, mood: '', tags: g,
+      paperStyle: 'lined', themeId: '', isFavorite: false, lockedUntil: '',
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount only
 
@@ -362,7 +380,13 @@ export default function EntryEditor() {
       setLockedUntil(entry.locked_until || '');
       setCreatedAt(entry.created_at || '');
       setSavedMemos(memos);
-      setBody(legacyToHtml(entry.body, photos));
+      const html = legacyToHtml(entry.body, photos);
+      setBody(html);
+      snapRef.current = JSON.stringify({
+        title: entry.title || '', body: html, mood: entry.mood || '', tags: entry.tags || '',
+        paperStyle: entry.paper_style || 'lined', themeId: entry.theme_id || '',
+        isFavorite: entry.is_favorite || false, lockedUntil: entry.locked_until || '',
+      });
     } finally {
       setLoading(false);
     }
@@ -401,9 +425,18 @@ export default function EntryEditor() {
         const newMemos = await uploadMemosRef.current(savedId);
         if (newMemos?.length) setSavedMemos(m => [...m, ...newMemos]);
       }
+      // Wax-seal moment when a time capsule is first sealed
+      const wasLocked = snapRef.current ? JSON.parse(snapRef.current).lockedUntil : '';
+      snapRef.current = JSON.stringify({ title, body, mood, tags, paperStyle, themeId, isFavorite, lockedUntil });
+      if (lockedUntil && !wasLocked) {
+        setSealShow(true);
+        setTimeout(() => setSealShow(false), 2200);
+      }
       if (isNew) nav(`/entry/${savedId}`, { replace: true });
+      return true;
     } catch (e) {
       alert('Save failed: ' + e.message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -425,10 +458,28 @@ export default function EntryEditor() {
   const showPrompts = isNew && (!body || body === '<p></p>' || body.trim() === '');
   const insertImage = useCallback(async (file) => resizeToBase64(file), []);
 
+  // Unsaved-changes detection: compare current fields to the saved snapshot
+  const currentSnap = JSON.stringify({ title, body, mood, tags, paperStyle, themeId, isFavorite, lockedUntil });
+  const dirty = snapRef.current !== null && currentSnap !== snapRef.current;
+
+  useEffect(() => {
+    editorDirty.current = dirty;
+    return () => { editorDirty.current = false; };
+  }, [dirty]);
+
+  // Native browser warning on close/refresh with unsaved changes
+  useEffect(() => {
+    const h = (e) => { if (editorDirty.current) { e.preventDefault(); e.returnValue = ''; } };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, []);
+
+  const goBack = () => { if (dirty) setLeaveOpen(true); else nav('/timeline'); };
+
   // Journal theme: scoped CSS vars on the page root only — never touches the
   // global theme (:root vars stay whatever the Timeline picker set).
   const journalTheme = themeId ? themeById(themeId) : null;
-  const pageClass = `ee-page ${journalTheme ? 'ee-themed' : ''}`;
+  const pageClass = `ee-page ${journalTheme ? 'ee-themed' : ''} ${candlelit ? 'ee-candlelit' : ''}`;
   const pageStyle = journalTheme ? journalTheme.vars : undefined;
 
   if (loading) return (
@@ -443,7 +494,7 @@ export default function EntryEditor() {
   return (
     <div className={pageClass} style={pageStyle}>
       <header className="app-header">
-        <Link to="/timeline" className="back-btn" title="Back to your journal">⟵</Link>
+        <button className="back-btn" onClick={goBack} title="Back to your journal">⟵</button>
         <input
           className="ee-title-input"
           placeholder="Entry title (optional)"
@@ -451,16 +502,27 @@ export default function EntryEditor() {
           onChange={e => setTitle(e.target.value)}
           maxLength={200}
         />
-        <button className="btn ee-save-btn" onClick={save} disabled={saving}>
-          {saving ? '…' : '✓ Save'}
+        <button
+          className={`ee-round-btn ee-candle-btn ${candlelit ? 'on' : ''}`}
+          onClick={() => setCandlelit(c => !c)}
+          title={candlelit ? 'Blow out the candle' : 'Light a candle · cozy writing mode'}
+        >🕯️</button>
+        <button
+          className={`ee-round-btn ee-fav-btn ${isFavorite ? 'on' : ''}`}
+          onClick={() => setIsFavorite(f => !f)}
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >{isFavorite ? '⭐' : '☆'}</button>
+        <button
+          className={`btn ee-save-btn ${dirty ? 'ee-save-dirty' : 'ee-save-clean'}`}
+          onClick={save}
+          disabled={saving}
+        >
+          {saving ? 'Sealing…' : dirty || !entryId ? '✦ Save' : 'Saved ☾'}
         </button>
         <div className="ee-menu-wrap" ref={menuRef}>
           <button className="btn icon-btn" onClick={() => setMenuOpen(o => !o)} title="More">⋮</button>
           {menuOpen && (
             <div className="ee-menu">
-              <button className="tl-menu-item" onClick={() => { setIsFavorite(f => !f); setMenuOpen(false); }}>
-                {isFavorite ? '⭐ Remove favorite' : '☆ Add to favorites'}
-              </button>
               <button className="tl-menu-item danger" onClick={() => { deleteEntry(); setMenuOpen(false); }}>
                 🗑️ Delete entry
               </button>
@@ -596,6 +658,37 @@ export default function EntryEditor() {
           )}
         </main>
       </div>
+
+      {/* Candlelit ambience */}
+      {candlelit && <div className="ee-candle-glow" aria-hidden="true">🕯️</div>}
+
+      {/* Unsaved-changes guard */}
+      {leaveOpen && (
+        <div className="ne-overlay" onClick={() => setLeaveOpen(false)}>
+          <div className="sealed-dialog" onClick={e => e.stopPropagation()}>
+            <div className="sealed-dialog-icon">🕯️</div>
+            <h3 className="sealed-dialog-title cinzel">Unsaved Changes</h3>
+            <p className="sealed-dialog-body">This page holds words you haven't saved yet.</p>
+            <div className="ee-leave-actions">
+              <button className="btn" onClick={async () => { setLeaveOpen(false); if (await save()) nav('/timeline'); }}>
+                ✦ Save &amp; leave
+              </button>
+              <button className="btn ghost" onClick={() => nav('/timeline')}>Leave without saving</button>
+              <button className="btn ghost" onClick={() => setLeaveOpen(false)}>Stay</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wax-seal moment for newly sealed time capsules */}
+      {sealShow && (
+        <div className="ee-seal-overlay" aria-hidden="true">
+          <div className="ee-seal-stamp">
+            <span className="ee-seal-moon">☾</span>
+            <span className="ee-seal-text cinzel">Sealed</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
