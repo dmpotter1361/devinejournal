@@ -248,7 +248,8 @@ function SkyToday() {
           <div key={b.name} className={`sky-row ${featured.name === b.name ? 'sky-featured-row' : ''}`}>
             <span className="sky-glyph">{b.glyph}</span>
             <span className="sky-planet">{b.name}</span>
-            <span className="sky-sign">{b.sign.glyph} {b.sign.name}</span>
+            <span className="sky-sign-name">{b.sign.name}</span>
+            <span className="sky-glyph sky-sign-glyph">{b.sign.glyph}</span>
           </div>
         ))}
       </div>
