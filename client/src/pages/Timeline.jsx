@@ -9,7 +9,7 @@ import { MAJOR_ARCANA } from '../lib/tarot';
 import { nextSabbat } from '../lib/sabbats';
 import { hasPin, requestLock } from '../lib/pin';
 import { skyToday, featuredPlacement, retrogradeNote } from '../lib/astro';
-import { lunarInfo } from '../lib/moon';
+import { lunarInfo, moonPhase } from '../lib/moon';
 import { crystalOfTheDay } from '../lib/crystals';
 import BreathingOverlay from '../components/BreathingOverlay';
 import { isSealed, opensOn } from '../lib/seal';
@@ -37,14 +37,11 @@ const TAG_ICON = { gratitude: '🙏', dream: '💭', letter: '💌', memory: '�
 const MOON_CYCLE = ['🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔'];
 
 function MoonPhase() {
-  const synodicMs = 29.53058867 * 86400000;
-  const phase = ((Date.now() - 1704974220000) % synodicMs) / synodicMs;
-  const idx = Math.floor(phase * 8) % 8;
-  const names = ['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous','Full Moon','Waning Gibbous','Last Quarter','Waning Crescent'];
+  const { emoji, name } = moonPhase();
   return (
     <div className="tl-moon-phase">
-      <span className="tl-moon-emoji">{MOON_CYCLE[idx]}</span>
-      <span className="tl-moon-phase-name">{names[idx]}</span>
+      <span className="tl-moon-emoji">{emoji}</span>
+      <span className="tl-moon-phase-name">{name}</span>
     </div>
   );
 }
@@ -600,9 +597,7 @@ function TimelineHeader({ user, entries, onBreathe }) {
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   const firstName = (user?.name || '').split(' ')[0] || 'dear';
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  const synodicMs = 29.53058867 * 86400000;
-  const phase = ((Date.now() - 1704974220000) % synodicMs) / synodicMs;
-  const moon = ['🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔'][Math.floor(phase * 8) % 8];
+  const moon = moonPhase().emoji;
   const streak = (() => {
     let s = 0;
     for (let i = 0; i < 90; i++) {

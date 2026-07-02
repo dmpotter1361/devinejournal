@@ -14,3 +14,21 @@ export function lunarInfo(date = new Date()) {
 
 export const isNewMoonWindow = (age) => age <= 3;               // first 3 days after new
 export const isFullMoonWindow = (age) => age >= 13 && age <= 17; // around the full moon
+
+// Northern-hemisphere phase emoji + name from the lunar age.
+const PHASES = [
+  { emoji: '🌑', name: 'New Moon' },
+  { emoji: '🌒', name: 'Waxing Crescent' },
+  { emoji: '🌓', name: 'First Quarter' },
+  { emoji: '🌔', name: 'Waxing Gibbous' },
+  { emoji: '🌕', name: 'Full Moon' },
+  { emoji: '🌖', name: 'Waning Gibbous' },
+  { emoji: '🌗', name: 'Last Quarter' },
+  { emoji: '🌘', name: 'Waning Crescent' },
+];
+
+export function moonPhase(date = new Date()) {
+  const { age } = lunarInfo(date);
+  const idx = Math.round((age / SYNODIC) * 8) % 8; // 0=new … 4=full
+  return PHASES[idx];
+}
