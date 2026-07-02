@@ -353,12 +353,17 @@ export default function EntryEditor() {
     if (!isNew) return;
     const tpl = (entryType && TYPE_TEMPLATES[entryType]) || {};
     const card = searchParams.get('card');
+    const intention = searchParams.get('intention');
     let t = tpl.title || '';
     let b = tpl.body || '';
     const g = tpl.tags || '';
     if (card) {
       t = t || `Card of the Day — ${card}`;
       b = `<p><strong>🔮 Card of the day: ${card}</strong></p><p>What this card stirs in me…</p>${b}`;
+    }
+    if (intention) {
+      t = t || 'Full Moon Reflection';
+      b = `<p><strong>🌕 Full moon reflection</strong></p><p>At the new moon I asked for: "${intention}"</p><p>How it has unfolded…</p>`;
     }
     if (t) setTitle(t);
     if (b) setBody(b);

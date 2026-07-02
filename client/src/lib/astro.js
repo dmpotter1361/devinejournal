@@ -53,6 +53,24 @@ function geocentricLongitude(key, T) {
   return norm((Math.atan2(p.y - e.y, p.x - e.x) * 180) / Math.PI);
 }
 
+// A planet is retrograde when its apparent (geocentric) longitude is moving
+// backward through the zodiac. Compare a few days either side; the daily
+// motion is small so a signed diff over 4 days reveals the direction.
+function isRetrograde(key, T) {
+  const dT = 2 / 36525; // 2 days, in Julian centuries
+  let d = geocentricLongitude(key, T + dT) - geocentricLongitude(key, T - dT);
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return d < 0;
+}
+
+// Retrograde meaning per inner planet (Sun & Moon never go retrograde)
+const RETRO_FLAVOR = {
+  Mercury: 'reread, revisit, and speak with care',
+  Venus: 'old loves and values return for a second look',
+  Mars: 'bank your fire — act from patience, not haste',
+};
+
 // Truncated lunar longitude (Meeus) — good to ~1–2°
 function moonLongitude(date) {
   const d = date.getTime() / 86400000 + 2440587.5 - 2451545.0;
@@ -67,13 +85,25 @@ export function skyToday(date = new Date()) {
   const sunLon = norm((Math.atan2(-e.y, -e.x) * 180) / Math.PI);
 
   const bodies = [
-    { name: 'Sun',     glyph: '☉', theme: 'The Sun — your light and center',      lon: sunLon },
-    { name: 'Moon',    glyph: '☽', theme: 'The Moon — your inner tide',           lon: moonLongitude(date) },
-    { name: 'Mercury', glyph: '☿', theme: 'Mercury — the messenger of thought',   lon: geocentricLongitude('mercury', T) },
-    { name: 'Venus',   glyph: '♀', theme: 'Venus — the heart, love and beauty',   lon: geocentricLongitude('venus', T) },
-    { name: 'Mars',    glyph: '♂', theme: 'Mars — the fire of will and courage',  lon: geocentricLongitude('mars', T) },
+    { name: 'Sun',     glyph: '☉', theme: 'The Sun — your light and center',      lon: sunLon,                             retro: false },
+    { name: 'Moon',    glyph: '☽', theme: 'The Moon — your inner tide',           lon: moonLongitude(date),                retro: false },
+    { name: 'Mercury', glyph: '☿', theme: 'Mercury — the messenger of thought',   lon: geocentricLongitude('mercury', T),  retro: isRetrograde('mercury', T) },
+    { name: 'Venus',   glyph: '♀', theme: 'Venus — the heart, love and beauty',   lon: geocentricLongitude('venus', T),    retro: isRetrograde('venus', T) },
+    { name: 'Mars',    glyph: '♂', theme: 'Mars — the fire of will and courage',  lon: geocentricLongitude('mars', T),     retro: isRetrograde('mars', T) },
   ];
   return bodies.map(b => ({ ...b, sign: SIGNS[Math.floor(norm(b.lon) / 30)] }));
+}
+
+// The most poetic retrograde note today, or null. Mercury takes precedence
+// (it's the one everyone feels), then Venus, then Mars.
+export function retrogradeNote(date = new Date()) {
+  const order = ['Mercury', 'Venus', 'Mars'];
+  const sky = skyToday(date);
+  for (const name of order) {
+    const b = sky.find(x => x.name === name);
+    if (b && b.retro) return { name, glyph: b.glyph, text: `${name} is retrograde — ${RETRO_FLAVOR[name]}.` };
+  }
+  return null;
 }
 
 // One placement featured per day (date-seeded — the sky is a fixed fact,

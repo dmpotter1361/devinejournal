@@ -8,7 +8,10 @@ import { CYCLE_DAYS, MS_DAY, GARDEN_STAGES, getStage, isGratitude, buildGarden, 
 import { MAJOR_ARCANA } from '../lib/tarot';
 import { nextSabbat } from '../lib/sabbats';
 import { hasPin, requestLock } from '../lib/pin';
-import { skyToday, featuredPlacement } from '../lib/astro';
+import { skyToday, featuredPlacement, retrogradeNote } from '../lib/astro';
+import { lunarInfo } from '../lib/moon';
+import { crystalOfTheDay } from '../lib/crystals';
+import BreathingOverlay from '../components/BreathingOverlay';
 import { isSealed, opensOn } from '../lib/seal';
 import SecurityModal from '../components/SecurityModal';
 import './Timeline.css';
@@ -258,6 +261,7 @@ function GratitudeGarden({ entries }) {
 function SkyToday() {
   const sky = skyToday();
   const featured = featuredPlacement();
+  const retro = retrogradeNote();
   return (
     <div className="sky-box">
       <div className="sky-rows">
@@ -265,13 +269,103 @@ function SkyToday() {
           <div key={b.name} className={`sky-row ${featured.name === b.name ? 'sky-featured-row' : ''}`}>
             {/* U+FE0E forces text-style glyphs — emoji rendering overflows the rail */}
             <span className="sky-glyph">{b.glyph + '︎'}</span>
-            <span className="sky-planet">{b.name}</span>
+            <span className="sky-planet">
+              {b.name}{b.retro && <span className="sky-retro" title="retrograde">℞</span>}
+            </span>
             <span className="sky-sign-name">{b.sign.name}</span>
             <span className="sky-glyph sky-sign-glyph">{b.sign.glyph + '︎'}</span>
           </div>
         ))}
       </div>
       <p className="sky-meaning">{featured.meaning}</p>
+      {retro && <p className="sky-retro-note">{retro.glyph + '︎'}℞ {retro.text}</p>}
+    </div>
+  );
+}
+
+/* ── New Moon → Full Moon intention cycle 🌑🌕 ── */
+function MoonIntention() {
+  const nav = useNavigate();
+  const { cycle, age } = lunarInfo();
+  const [stored, setStored] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('dj_moon_intention') || 'null'); }
+    catch { return null; }
+  });
+  const [draft, setDraft] = useState('');
+  const mine = stored && stored.cycle === cycle ? stored : null;
+
+  const save = () => {
+    const text = draft.trim();
+    if (!text) return;
+    const rec = { cycle, text, released: false };
+    localStorage.setItem('dj_moon_intention', JSON.stringify(rec));
+    setStored(rec); setDraft('');
+  };
+  const release = () => {
+    const rec = { ...mine, released: true };
+    localStorage.setItem('dj_moon_intention', JSON.stringify(rec));
+    setStored(rec);
+  };
+
+  const newWin = age <= 3;
+  const fullWin = age >= 13 && age <= 17;
+
+  if (newWin) {
+    if (mine) return (
+      <div className="moon-int">
+        <p className="moon-int-line">🌑 Your intention is planted:</p>
+        <p className="moon-int-text">"{mine.text}"</p>
+      </div>
+    );
+    return (
+      <div className="moon-int">
+        <p className="moon-int-line">🌑 A new moon rises — what do you wish to call in?</p>
+        <textarea
+          className="moon-int-input" rows={2} maxLength={160}
+          placeholder="Set your intention…" value={draft}
+          onChange={e => setDraft(e.target.value)}
+        />
+        <button className="moon-int-btn" onClick={save} disabled={!draft.trim()}>Plant it ✦</button>
+      </div>
+    );
+  }
+
+  if (fullWin && mine && !mine.released) {
+    return (
+      <div className="moon-int">
+        <p className="moon-int-line">🌕 At the new moon you asked for:</p>
+        <p className="moon-int-text">"{mine.text}"</p>
+        <p className="moon-int-sub">How has it unfolded?</p>
+        <div className="moon-int-actions">
+          <button className="moon-int-btn" onClick={() => nav(`/entry/new?type=ritual&intention=${encodeURIComponent(mine.text)}`)}>Reflect ✦</button>
+          <button className="moon-int-btn ghost" onClick={release}>Release 🌙</button>
+        </div>
+      </div>
+    );
+  }
+
+  // Quiet growing reminder between the two windows
+  if (mine && !mine.released && age > 3 && age < 13) {
+    return (
+      <div className="moon-int moon-int-quiet">
+        <p className="moon-int-line">🌱 Your intention is growing:</p>
+        <p className="moon-int-text">"{mine.text}"</p>
+      </div>
+    );
+  }
+  return null; // waning / nothing active → stay out of the way
+}
+
+/* ── Crystal of the Day 🔮 ── */
+function CrystalOfDay() {
+  const c = crystalOfTheDay();
+  return (
+    <div className="crystal-box">
+      <span className="crystal-emoji">{c.emoji}</span>
+      <div className="crystal-text">
+        <span className="crystal-name">{c.name}</span>
+        <span className="crystal-props">{c.props}</span>
+      </div>
     </div>
   );
 }
@@ -314,18 +408,44 @@ function CardOfDay() {
   );
 }
 
-/* ── The familiar 🐈‍⬛ ── */
+/* ── The familiar 🐈‍⬛ — naps until you write, then leaves you a keepsake ── */
+const LUNA_GIFTS = [
+  { emoji: '🌷', msg: 'Luna left a pressed tulip between your pages.' },
+  { emoji: '🍃', msg: 'Luna brought you a leaf still cool with dew.' },
+  { emoji: '✨', msg: 'Luna curled up and left a little wish behind.' },
+  { emoji: '🌾', msg: 'Luna nudged a sprig of wheat your way — for abundance.' },
+  { emoji: '🪶', msg: 'Luna dropped a soft feather beside your candle.' },
+  { emoji: '🌙', msg: 'Luna traced a tiny moon in the dust, just for you.' },
+  { emoji: '🐚', msg: 'Luna carried in a shell that still remembers the sea.' },
+  { emoji: '⭐', msg: 'Luna blinked at you slowly — in cat, that means "I love you."' },
+  { emoji: '🍯', msg: 'Luna left something sweet — a small, quiet kindness.' },
+  { emoji: '🌟', msg: 'Luna kept a wish warm for you through the night.' },
+];
+function lunaGift(d = new Date()) {
+  const seed = d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate();
+  return LUNA_GIFTS[seed % LUNA_GIFTS.length];
+}
+
 function Familiar({ entries }) {
   const wroteToday = entries.some(e => new Date(e.created_at).toDateString() === new Date().toDateString());
+  const [open, setOpen] = useState(false);
+  const gift = lunaGift();
   return (
     <div className="fam-box">
-      <div className="fam-scene">
+      <button
+        className="fam-scene"
+        onClick={() => wroteToday && setOpen(o => !o)}
+        style={{ cursor: wroteToday ? 'pointer' : 'default' }}
+        title={wroteToday ? 'Luna has something for you' : 'Luna is napping'}
+      >
         <span className={`fam-cat ${wroteToday ? 'fam-awake' : 'fam-asleep'}`}>🐈‍⬛</span>
         {wroteToday ? <span className="fam-star">✦</span> : <span className="fam-zzz">💤</span>}
-      </div>
-      <p className="fam-caption">
-        {wroteToday ? 'Luna is keeping you company' : 'Luna is napping — write to wake her'}
-      </p>
+      </button>
+      {wroteToday
+        ? (open
+            ? <p className="fam-gift">{gift.emoji} {gift.msg}</p>
+            : <p className="fam-caption">Luna has something for you — tap her ✦</p>)
+        : <p className="fam-caption">Luna is napping — write to wake her</p>}
     </div>
   );
 }
@@ -475,7 +595,7 @@ function todaysAffirmation() {
   return AFFIRMATIONS[seed % AFFIRMATIONS.length];
 }
 
-function TimelineHeader({ user, entries }) {
+function TimelineHeader({ user, entries, onBreathe }) {
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   const firstName = (user?.name || '').split(' ')[0] || 'dear';
@@ -515,13 +635,16 @@ function TimelineHeader({ user, entries }) {
           </p>
         );
       })()}
-      {entries.length > 0 && (
-        <div className="tl-hc-stats">
-          <span className="tl-hc-stat">{entries.length} entries</span>
-          <span className="tl-hc-dot-sep">·</span>
-          <span className="tl-hc-stat">{entries.reduce((a, e) => a + (e.body ? e.body.replace(/<[^>]+>/g,'').split(/\s+/).filter(Boolean).length : 0), 0).toLocaleString()} words</span>
-        </div>
-      )}
+      <div className="tl-hc-footer">
+        {entries.length > 0 ? (
+          <div className="tl-hc-stats">
+            <span className="tl-hc-stat">{entries.length} entries</span>
+            <span className="tl-hc-dot-sep">·</span>
+            <span className="tl-hc-stat">{entries.reduce((a, e) => a + (e.body ? e.body.replace(/<[^>]+>/g,'').split(/\s+/).filter(Boolean).length : 0), 0).toLocaleString()} words</span>
+          </div>
+        ) : <span />}
+        <button className="tl-hc-breathe" onClick={onBreathe} title="A grounding pause">◯ Take a breath</button>
+      </div>
     </div>
   );
 }
@@ -545,6 +668,7 @@ export default function Timeline() {
 
   const [sealedEntry, setSealedEntry] = useState(null); // entry being shown in lock dialog
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [breathOpen, setBreathOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -658,6 +782,11 @@ export default function Timeline() {
 
               <div className="tl-right-divider"><span>✦</span></div>
 
+              <p className="tl-right-heading cinzel">Today's Crystal</p>
+              <CrystalOfDay />
+
+              <div className="tl-right-divider"><span>✦</span></div>
+
               <p className="tl-right-heading cinzel">Familiar</p>
               <Familiar entries={entries} />
 
@@ -706,7 +835,7 @@ export default function Timeline() {
           </div>
 
           {/* Greeting + affirmation header */}
-          {!loading && !error && <TimelineHeader user={user} entries={entries} />}
+          {!loading && !error && <TimelineHeader user={user} entries={entries} onBreathe={() => setBreathOpen(true)} />}
 
           {/* Compact filter bar */}
           <div className="tl-filter-bar">
@@ -791,6 +920,7 @@ export default function Timeline() {
         <aside className="tl-right-panel">
           <div className="tl-right-inner">
             <MoonPhase />
+            <MoonIntention />
 
             <div className="tl-right-divider"><span>✦</span></div>
 
@@ -823,6 +953,9 @@ export default function Timeline() {
           onSelect={handleNewType}
         />
       )}
+
+      {/* Grounding pause */}
+      {breathOpen && <BreathingOverlay onClose={() => setBreathOpen(false)} />}
 
       {/* Security settings */}
       {securityOpen && <SecurityModal onClose={() => setSecurityOpen(false)} />}

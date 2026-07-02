@@ -1,0 +1,55 @@
+.br-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: br-fade 0.4s var(--ease);
+}
+@keyframes br-fade { from { opacity: 0; } to { opacity: 1; } }
+.br-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.br-circle {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 38%,
+    color-mix(in srgb, var(--accent) 70%, #fff),
+    var(--accent) 55%,
+    color-mix(in srgb, var(--accent) 40%, transparent) 100%);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--accent) 55%, transparent);
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.4, 1);
+}
+.br-label {
+  font-size: 24px;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+.br-count {
+  font-size: 16px;
+  color: var(--muted);
+  font-style: italic;
+  margin: -8px 0 0;
+}
+.br-done {
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 16px;
+  padding: 10px 24px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: box-shadow 0.2s var(--ease);
+}
+.br-done:hover { box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 40%, transparent); }
