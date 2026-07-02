@@ -623,9 +623,9 @@ export default function Timeline() {
       </header>
 
       <div className="tl-body">
-        {/* Left decorative gutter */}
-        <div className="tl-left-rail" aria-hidden="true">
-          <div className="tl-rail-inner">
+        {/* Left rail — moon strip + secondary tiles */}
+        <div className="tl-left-rail">
+          <div className="tl-rail-inner" aria-hidden="true">
             <div className="tl-rail-line" />
             <div className="tl-rail-moons">
               {MOON_CYCLE.map((m, i) => (
@@ -633,6 +633,40 @@ export default function Timeline() {
               ))}
             </div>
           </div>
+          <aside className="tl-left-panel">
+            <div className="tl-right-inner">
+              <p className="tl-right-heading cinzel">Theme</p>
+              <ThemePicker themes={THEMES} currentId={currentThemeId} onChange={switchTheme} />
+
+              <div className="tl-right-divider"><span>✦</span></div>
+
+              <p className="tl-right-heading cinzel">Familiar</p>
+              <Familiar entries={entries} />
+
+              <div className="tl-right-divider"><span>✦</span></div>
+
+              <p className="tl-right-heading cinzel">Charms</p>
+              <CharmShelf entries={entries} />
+
+              <div className="tl-right-divider"><span>✦</span></div>
+
+              <p className="tl-right-heading cinzel">Journal</p>
+              <div className="tl-right-stats">
+                <div className="tl-stat">
+                  <span className="tl-stat-num">{entries.length}</span>
+                  <span className="tl-stat-label">entries</span>
+                </div>
+                <div className="tl-stat">
+                  <span className="tl-stat-num">{entries.filter(e => e.is_favorite).length}</span>
+                  <span className="tl-stat-label">favorites</span>
+                </div>
+                <div className="tl-stat">
+                  <span className="tl-stat-num">{new Set(entries.map(e => new Date(e.created_at).toDateString())).size}</span>
+                  <span className="tl-stat-label">days</span>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
 
         {/* Center journal feed */}
@@ -752,42 +786,9 @@ export default function Timeline() {
 
             <div className="tl-right-divider"><span>✦</span></div>
 
-            <p className="tl-right-heading cinzel">Theme</p>
-            <ThemePicker themes={THEMES} currentId={currentThemeId} onChange={switchTheme} />
-
-            <div className="tl-right-divider"><span>✦</span></div>
-
             {/* Gratitude Garden */}
             <p className="tl-right-heading cinzel">Garden</p>
             <GratitudeGarden entries={entries} />
-
-            <div className="tl-right-divider"><span>✦</span></div>
-
-            <p className="tl-right-heading cinzel">Familiar</p>
-            <Familiar entries={entries} />
-
-            <div className="tl-right-divider"><span>✦</span></div>
-
-            <p className="tl-right-heading cinzel">Charms</p>
-            <CharmShelf entries={entries} />
-
-            <div className="tl-right-divider"><span>✦</span></div>
-
-            <p className="tl-right-heading cinzel">Journal</p>
-            <div className="tl-right-stats">
-              <div className="tl-stat">
-                <span className="tl-stat-num">{entries.length}</span>
-                <span className="tl-stat-label">entries</span>
-              </div>
-              <div className="tl-stat">
-                <span className="tl-stat-num">{entries.filter(e => e.is_favorite).length}</span>
-                <span className="tl-stat-label">favorites</span>
-              </div>
-              <div className="tl-stat">
-                <span className="tl-stat-num">{new Set(entries.map(e => new Date(e.created_at).toDateString())).size}</span>
-                <span className="tl-stat-label">days</span>
-              </div>
-            </div>
           </div>
         </aside>
       </div>

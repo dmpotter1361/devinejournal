@@ -7,18 +7,20 @@
 /* ── Three-column body ── */
 .tl-body {
   display: grid;
-  grid-template-columns: 72px 1fr 240px;
+  grid-template-columns: 248px 1fr 240px;
   flex: 1;
   align-items: start;
 }
 
-/* Left decorative rail */
+/* Left rail — moon strip + secondary tiles */
 .tl-left-rail {
   display: flex;
-  justify-content: flex-end;
-  padding-right: 16px;
-  padding-top: 24px;
+  gap: 12px;
+  padding: 20px 4px 20px 14px;
+  position: sticky;
+  top: 52px;
 }
+.tl-left-panel { flex: 1; min-width: 0; }
 .tl-rail-inner {
   position: relative;
   display: flex;
@@ -882,7 +884,8 @@
 }
 .sky-row {
   display: grid;
-  grid-template-columns: 20px 1fr auto 20px;
+  /* planet glyph | planet name (fixed so sign column aligns) | sign name | sign glyph */
+  grid-template-columns: 20px 62px 1fr 20px;
   align-items: center;
   gap: 8px;
   font-size: 15px;
@@ -895,7 +898,7 @@
 }
 .sky-glyph { color: var(--accent); text-align: center; }
 .sky-planet { text-align: left; }
-.sky-sign-name { color: var(--muted); font-size: 14px; text-align: right; }
+.sky-sign-name { color: var(--muted); font-size: 14px; text-align: left; padding-left: 8px; }
 .sky-sign-glyph { color: var(--muted); }
 .sky-meaning {
   margin: 6px 0 0;
