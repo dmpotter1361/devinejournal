@@ -870,6 +870,40 @@
 }
 .grat-visit:hover { text-decoration: underline; }
 
+/* ── The Sky Today ── */
+.sky-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-2));
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+}
+.sky-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--ink);
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.sky-featured-row {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.sky-glyph { color: var(--accent); width: 18px; text-align: center; flex-shrink: 0; }
+.sky-planet { flex: 1; }
+.sky-sign { color: var(--muted); font-size: 14px; }
+.sky-meaning {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
 /* ── Card of the Day ── */
 .cod-back {
   width: 100%;

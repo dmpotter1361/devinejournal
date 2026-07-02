@@ -17,8 +17,12 @@ function bodyText(body) {
       return JSON.parse(s).filter(b => b.type === 'text').map(b => b.content || '').join(' ');
     } catch { /* fall through */ }
   }
+  // Block boundaries and line breaks become spaces, or paragraphs jam together
+  const spaced = body
+    .replace(/<\/(p|li|div|h[1-6]|blockquote)>/gi, ' ')
+    .replace(/<br[^>]*>/gi, ' ');
   const tmp = document.createElement('div');
-  tmp.innerHTML = body;
+  tmp.innerHTML = spaced;
   return tmp.textContent || '';
 }
 

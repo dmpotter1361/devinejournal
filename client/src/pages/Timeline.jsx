@@ -5,9 +5,10 @@ import { MOODS, moodColor } from '../moods';
 import { THEMES, themeById, applyTheme } from '../themes';
 import { openSearch } from '../components/SearchOverlay';
 import { CYCLE_DAYS, MS_DAY, GARDEN_STAGES, getStage, isGratitude, buildGarden, bloomMonth } from '../lib/garden';
-import { cardOfTheDay } from '../lib/tarot';
+import { MAJOR_ARCANA } from '../lib/tarot';
 import { nextSabbat } from '../lib/sabbats';
 import { hasPin, requestLock } from '../lib/pin';
+import { skyToday, featuredPlacement } from '../lib/astro';
 import { isSealed, opensOn } from '../lib/seal';
 import SecurityModal from '../components/SecurityModal';
 import './Timeline.css';
@@ -60,9 +61,13 @@ function plainText(html) {
     try { return JSON.parse(html).filter(b => b.type === 'text').map(b => b.content || '').join(' ').slice(0, 200); }
     catch { /**/ }
   }
+  // Block boundaries and line breaks become spaces, or paragraphs jam together
+  const spaced = html
+    .replace(/<\/(p|li|div|h[1-6]|blockquote)>/gi, ' ')
+    .replace(/<br[^>]*>/gi, ' ');
   const tmp = document.createElement('div');
-  tmp.innerHTML = html;
-  return (tmp.textContent || '').slice(0, 200);
+  tmp.innerHTML = spaced;
+  return (tmp.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
 function EntryCard({ entry, onClick, sealed }) {
@@ -232,15 +237,44 @@ function GratitudeGarden({ entries }) {
   );
 }
 
-/* ── Card of the Day 🔮 ── */
+/* ── The Sky Today ☉ — real planetary positions, a fixed fact of the day ── */
+function SkyToday() {
+  const sky = skyToday();
+  const featured = featuredPlacement();
+  return (
+    <div className="sky-box">
+      <div className="sky-rows">
+        {sky.map(b => (
+          <div key={b.name} className={`sky-row ${featured.name === b.name ? 'sky-featured-row' : ''}`}>
+            <span className="sky-glyph">{b.glyph}</span>
+            <span className="sky-planet">{b.name}</span>
+            <span className="sky-sign">{b.sign.glyph} {b.sign.name}</span>
+          </div>
+        ))}
+      </div>
+      <p className="sky-meaning">{featured.meaning}</p>
+    </div>
+  );
+}
+
+/* ── Card of the Day 🔮 — a true random pull, locked in once drawn ── */
 function CardOfDay() {
   const nav = useNavigate();
   const todayKey = new Date().toDateString();
-  const [drawn, setDrawn] = useState(() => localStorage.getItem('dj_card_day') === todayKey);
-  const card = cardOfTheDay();
-  const draw = () => { localStorage.setItem('dj_card_day', todayKey); setDrawn(true); };
+  const [pick, setPick] = useState(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem('dj_card_pick') || 'null');
+      return p && p.date === todayKey ? p.idx : null;
+    } catch { return null; }
+  });
+  const card = pick !== null ? MAJOR_ARCANA[pick] : null;
+  const draw = () => {
+    const idx = Math.floor(Math.random() * MAJOR_ARCANA.length);
+    localStorage.setItem('dj_card_pick', JSON.stringify({ date: todayKey, idx }));
+    setPick(idx);
+  };
 
-  if (!drawn) {
+  if (!card) {
     return (
       <button className="cod-back" onClick={draw}>
         <span className="cod-back-moon">☾</span>
@@ -704,6 +738,11 @@ export default function Timeline() {
         <aside className="tl-right-panel">
           <div className="tl-right-inner">
             <MoonPhase />
+
+            <div className="tl-right-divider"><span>✦</span></div>
+
+            <p className="tl-right-heading cinzel">The Sky Today</p>
+            <SkyToday />
 
             <div className="tl-right-divider"><span>✦</span></div>
 
