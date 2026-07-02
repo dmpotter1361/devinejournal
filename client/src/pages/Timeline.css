@@ -468,6 +468,23 @@
   transform: translateY(-2px);
   box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent);
 }
+/* Thumbnail — first image of the entry, docked to the card's right edge */
+.entry-card--thumb { grid-template-columns: 68px 1fr 88px; }
+.ec-thumb {
+  border-left: 1px solid var(--line);
+  overflow: hidden;
+  min-height: 100%;
+}
+.ec-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+@media (max-width: 600px) {
+  .entry-card--thumb { grid-template-columns: 68px 1fr 64px; }
+}
+
 /* Journal-theme tint — card body picks up the entry's theme color.
    Low mix % keeps var(--ink) text readable on every global theme. */
 .entry-card--themed {

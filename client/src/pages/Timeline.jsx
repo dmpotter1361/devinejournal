@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, clearAuth, getUser } from '../api';
 import { MOODS, moodColor } from '../moods';
@@ -70,12 +70,20 @@ function plainText(html) {
   return (tmp.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
+// First inline image in an entry body → card thumbnail
+function firstImage(body) {
+  if (!body || body.trimStart().startsWith('[')) return null;
+  const m = body.match(/<img[^>]+src="([^"]+)"/i);
+  return m ? m[1] : null;
+}
+
 function EntryCard({ entry, onClick, sealed }) {
   const mc = moodColor(entry.mood);
   const theme = themeById(entry.theme_id || 'midnight');
   // Only entries with an explicit journal theme get the card-body tint
   const themedClass = entry.theme_id ? 'entry-card--themed' : '';
   const preview = plainText(entry.body);
+  const thumb = useMemo(() => firstImage(entry.body), [entry.body]);
   const d = new Date(entry.created_at);
 
   if (sealed) {
@@ -102,7 +110,11 @@ function EntryCard({ entry, onClick, sealed }) {
   }
 
   return (
-    <button className={`entry-card ${themedClass}`} onClick={onClick} style={{ '--theme-dot': theme.dot }}>
+    <button
+      className={`entry-card ${themedClass} ${thumb ? 'entry-card--thumb' : ''}`}
+      onClick={onClick}
+      style={{ '--theme-dot': theme.dot }}
+    >
       <div className="ec-date">
         <span className="ec-day-meta">
           <span className="ec-weekday">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span>
@@ -137,6 +149,11 @@ function EntryCard({ entry, onClick, sealed }) {
           </div>
         )}
       </div>
+      {thumb && (
+        <div className="ec-thumb" aria-hidden="true">
+          <img src={thumb} alt="" loading="lazy" />
+        </div>
+      )}
     </button>
   );
 }
