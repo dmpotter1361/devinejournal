@@ -885,20 +885,27 @@
 .sky-row {
   display: grid;
   /* planet glyph | planet name (fixed so sign column aligns) | sign name | sign glyph */
-  grid-template-columns: 20px 62px 1fr 20px;
+  grid-template-columns: 16px 60px 1fr 16px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 15px;
   color: var(--ink);
   padding: 2px 4px;
   border-radius: 6px;
+  min-width: 0;
 }
 .sky-featured-row {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-.sky-glyph { color: var(--accent); text-align: center; }
+.sky-glyph {
+  color: var(--accent);
+  text-align: center;
+  font-size: 14px;
+  line-height: 1;
+  overflow: hidden;
+}
 .sky-planet { text-align: left; }
-.sky-sign-name { color: var(--muted); font-size: 14px; text-align: left; padding-left: 8px; }
+.sky-sign-name { color: var(--muted); font-size: 13px; text-align: left; padding-left: 4px; }
 .sky-sign-glyph { color: var(--muted); }
 .sky-meaning {
   margin: 6px 0 0;
