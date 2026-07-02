@@ -75,8 +75,13 @@
   user-select: none;
 }
 .sk-canvas {
-  width: 100%;
-  aspect-ratio: 1000 / 640;
+  /* Scale to fit BOTH width and viewport height (browser zoom / short
+     windows) — intrinsic ratio is preserved like an img */
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(96vh - 200px);
+  margin: 0 auto;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
   touch-action: none;

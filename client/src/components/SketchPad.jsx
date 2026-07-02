@@ -31,11 +31,24 @@ export default function SketchPad({ onDone, onClose }) {
   const [size, setSize] = useState(SIZES[1]);
   const [eraser, setEraser] = useState(false);
   const [penOnly, setPenOnly] = useState(false);
+  const [paper, setPaper] = useState('plain'); // 'plain' | 'lined'
+  const paperRef = useRef('plain');
   const [, setBump] = useState(0); // re-render for undo button state
 
+  // Lines are part of the paper — they bake into the exported image
   const paintBackground = (ctx) => {
     ctx.fillStyle = PAPER;
     ctx.fillRect(0, 0, W, H);
+    if (paperRef.current === 'lined') {
+      ctx.strokeStyle = 'rgba(60, 100, 140, 0.22)';
+      ctx.lineWidth = 1;
+      for (let y = 72; y < H - 12; y += 46) {
+        ctx.beginPath();
+        ctx.moveTo(26, y);
+        ctx.lineTo(W - 26, y);
+        ctx.stroke();
+      }
+    }
   };
 
   useEffect(() => {
@@ -124,6 +137,7 @@ export default function SketchPad({ onDone, onClose }) {
 
   const undo = () => { strokesRef.current.pop(); redraw(); setBump(n => n + 1); };
   const clearAll = () => { strokesRef.current = []; redraw(); setBump(n => n + 1); };
+  const setPaperMode = (p) => { paperRef.current = p; setPaper(p); redraw(); };
 
   const finish = () => {
     if (strokesRef.current.length === 0) { onClose(); return; }
@@ -155,6 +169,10 @@ export default function SketchPad({ onDone, onClose }) {
                 onClick={() => setSize(s)}
               >{s.label}</button>
             ))}
+          </div>
+          <div className="sk-sizes">
+            <button className={`sk-size ${paper === 'plain' ? 'sk-on' : ''}`} title="Plain paper" onClick={() => setPaperMode('plain')}>▭</button>
+            <button className={`sk-size ${paper === 'lined' ? 'sk-on' : ''}`} title="Lined paper" onClick={() => setPaperMode('lined')}>≡</button>
           </div>
           <button className={`sk-tool ${eraser ? 'sk-on' : ''}`} title="Eraser" onClick={() => setEraser(e => !e)}>🧽</button>
           <button className="sk-tool" title="Undo last stroke" onClick={undo} disabled={strokesRef.current.length === 0}>↩</button>
