@@ -5,7 +5,8 @@ import { MOODS, moodColor } from '../moods';
 import { THEMES, themeById, applyTheme } from '../themes';
 import { openSearch } from '../components/SearchOverlay';
 import { CYCLE_DAYS, MS_DAY, GARDEN_STAGES, getStage, isGratitude, buildGarden, bloomMonth } from '../lib/garden';
-import { MAJOR_ARCANA } from '../lib/tarot';
+import { loadDeck, findCard, CARD_BACK } from '../lib/deck';
+import { prettify } from '../lib/prettify';
 import { nextSabbat } from '../lib/sabbats';
 import { hasPin, requestLock } from '../lib/pin';
 import { skyToday, featuredPlacement, retrogradeNote } from '../lib/astro';
@@ -30,6 +31,7 @@ const ENTRY_TYPES = [
   { id: 'travel',     icon: '🧳', label: 'Travel Note',     desc: 'Capture a place and moment' },
   { id: 'quick',      icon: '⚡', label: 'Quick Thought',   desc: 'A fast jot-it-down moment' },
   { id: 'poem',       icon: '✨', label: 'Poem',            desc: 'Express yourself in verse' },
+  { id: 'reading',    icon: '🔮', label: 'Tarot Reading',   desc: 'Draw a spread from your deck' },
 ];
 
 const TAG_ICON = { gratitude: '🙏', dream: '💭', letter: '💌', memory: '🌟', reflection: '🪞', quick: '⚡', poem: '✨' };
@@ -367,40 +369,58 @@ function CrystalOfDay() {
   );
 }
 
-/* ── Card of the Day 🔮 — a true random pull, locked in once drawn ── */
+/* ── Card of the Day 🔮 — a true random pull from HER deck, locked once drawn ── */
 function CardOfDay() {
   const nav = useNavigate();
+  const [deck, setDeck] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const todayKey = new Date().toDateString();
-  const [pick, setPick] = useState(() => {
+  const [pickName, setPickName] = useState(() => {
     try {
       const p = JSON.parse(localStorage.getItem('dj_card_pick') || 'null');
-      return p && p.date === todayKey ? p.idx : null;
+      return p && p.date === todayKey && p.name ? p.name : null;
     } catch { return null; }
   });
-  const card = pick !== null ? MAJOR_ARCANA[pick] : null;
+
+  useEffect(() => { loadDeck().then(setDeck).catch(() => {}); }, []);
+
+  const card = deck && pickName ? findCard(deck, pickName) : null;
   const draw = () => {
-    const idx = Math.floor(Math.random() * MAJOR_ARCANA.length);
-    localStorage.setItem('dj_card_pick', JSON.stringify({ date: todayKey, idx }));
-    setPick(idx);
+    if (!deck) return;
+    const c = deck.cards[Math.floor(Math.random() * deck.cards.length)];
+    localStorage.setItem('dj_card_pick', JSON.stringify({ date: todayKey, name: c.name }));
+    setPickName(c.name);
   };
 
   if (!card) {
     return (
-      <button className="cod-back" onClick={draw}>
-        <span className="cod-back-moon">☾</span>
+      <button className="cod-back" onClick={draw} disabled={!deck}>
+        <img className="cod-back-img" src={CARD_BACK} alt="" />
         <span className="cod-back-label">Draw today's card ✦</span>
       </button>
     );
   }
   return (
     <div className="cod-card">
-      <span className="cod-symbol">{card.symbol}</span>
+      <img className="cod-art" src={card.image} alt={card.name} />
       <span className="cod-name cinzel">{card.name}</span>
-      <p className="cod-reading">{card.reading}</p>
-      <button
-        className="cod-journal"
-        onClick={() => nav(`/entry/new?type=reflection&card=${encodeURIComponent(card.name)}`)}
-      >Journal this ✦</button>
+      <div className="cod-keywords">
+        {card.keywords.split(',').map(k => <span key={k} className="cod-kw">{k.trim()}</span>)}
+      </div>
+      <p className="cod-reading">{card.brief}</p>
+      {expanded && (
+        // eslint-disable-next-line react/no-danger
+        <div className="cod-desc" dangerouslySetInnerHTML={{ __html: prettify(card.description) }} />
+      )}
+      <div className="cod-actions">
+        <button className="cod-journal" onClick={() => setExpanded(e => !e)}>
+          {expanded ? 'Less ▴' : 'Read more ▾'}
+        </button>
+        <button
+          className="cod-journal"
+          onClick={() => nav(`/entry/new?type=reflection&card=${encodeURIComponent(card.name)}`)}
+        >Journal this ✦</button>
+      </div>
     </div>
   );
 }
@@ -703,6 +723,7 @@ export default function Timeline() {
 
   const handleNewType = (type) => {
     setNewModalOpen(false);
+    if (type.id === 'reading') { nav('/reading'); return; }
     nav(`/entry/new?type=${type.id}`);
   };
 
@@ -746,8 +767,10 @@ export default function Timeline() {
           {menuOpen && (
             <div className="tl-menu">
               <div className="tl-menu-name">{user?.name || 'Journal'}</div>
+              <button className="tl-menu-item" onClick={() => nav('/reading')}>🔮 Tarot Reading</button>
+              <button className="tl-menu-item" onClick={() => nav('/library')}>📖 Card Library</button>
               <button className="tl-menu-item" onClick={() => nav('/garden')}>🌸 Gratitude Garden</button>
-              <button className="tl-menu-item" onClick={() => nav('/review')}>🔮 Year in Review</button>
+              <button className="tl-menu-item" onClick={() => nav('/review')}>✨ Year in Review</button>
               <button className="tl-menu-item" onClick={() => nav('/print')}>🖨️ Print journal</button>
               {hasPin() && (
                 <button className="tl-menu-item" onClick={() => { setMenuOpen(false); requestLock(); }}>🔒 Lock journal</button>

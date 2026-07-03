@@ -7,6 +7,8 @@ import Calendar from './pages/Calendar';
 import Garden from './pages/Garden';
 import Review from './pages/Review';
 import PrintView from './pages/PrintView';
+import Reading from './pages/Reading';
+import CardLibrary from './pages/CardLibrary';
 import SearchOverlay from './components/SearchOverlay';
 import PinLock from './components/PinLock';
 
@@ -32,6 +34,8 @@ export default function App() {
         <Route path="/garden" element={<Private><Garden /></Private>} />
         <Route path="/review" element={<Private><Review /></Private>} />
         <Route path="/print" element={<Private><PrintView /></Private>} />
+        <Route path="/reading" element={<Private><Reading /></Private>} />
+        <Route path="/library" element={<Private><CardLibrary /></Private>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
