@@ -369,11 +369,69 @@ function CrystalOfDay() {
   );
 }
 
+/* ── A movable popup showing HER full card art + meaning — draggable by its bar ── */
+function CardPopup({ card, onClose }) {
+  const [pos, setPos] = useState(null); // {x,y} top-left once dragged; null = centered
+  const drag = useRef(null);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const onPointerDown = (e) => {
+    const rect = e.currentTarget.parentElement.getBoundingClientRect();
+    drag.current = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!drag.current) return;
+    const w = window.innerWidth, h = window.innerHeight;
+    setPos({
+      x: Math.max(8, Math.min(e.clientX - drag.current.dx, w - 60)),
+      y: Math.max(8, Math.min(e.clientY - drag.current.dy, h - 60)),
+    });
+  };
+  const onPointerUp = (e) => {
+    drag.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+  };
+
+  const style = pos ? { left: pos.x, top: pos.y, transform: 'none' } : undefined;
+
+  return (
+    <div className="card-pop" style={style} role="dialog" aria-label={`${card.name} — card meaning`}>
+      <div
+        className="card-pop-bar"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+      >
+        <span className="card-pop-grip" aria-hidden="true">⠿</span>
+        <span className="card-pop-title cinzel">{card.name}</span>
+        <button className="card-pop-close" onClick={onClose} aria-label="Close">✕</button>
+      </div>
+      <div className="card-pop-body">
+        <img className="card-pop-art" src={card.image} alt={card.name} draggable="false" />
+        <div className="card-pop-text">
+          <div className="cod-keywords card-pop-kws">
+            {card.keywords.split(',').map(k => <span key={k} className="cod-kw">{k.trim()}</span>)}
+          </div>
+          <p className="card-pop-brief">{card.brief}</p>
+          {/* eslint-disable-next-line react/no-danger */}
+          <div className="card-pop-desc" dangerouslySetInnerHTML={{ __html: prettify(card.description) }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Card of the Day 🔮 — a true random pull from HER deck, locked once drawn ── */
 function CardOfDay() {
   const nav = useNavigate();
   const [deck, setDeck] = useState(null);
-  const [expanded, setExpanded] = useState(false);
+  const [popOpen, setPopOpen] = useState(false);
   const todayKey = new Date().toDateString();
   const [pickName, setPickName] = useState(() => {
     try {
@@ -408,19 +466,16 @@ function CardOfDay() {
         {card.keywords.split(',').map(k => <span key={k} className="cod-kw">{k.trim()}</span>)}
       </div>
       <p className="cod-reading">{card.brief}</p>
-      {expanded && (
-        // eslint-disable-next-line react/no-danger
-        <div className="cod-desc" dangerouslySetInnerHTML={{ __html: prettify(card.description) }} />
-      )}
       <div className="cod-actions">
-        <button className="cod-journal" onClick={() => setExpanded(e => !e)}>
-          {expanded ? 'Less ▴' : 'Read more ▾'}
+        <button className="cod-journal" onClick={() => setPopOpen(true)}>
+          Read more ✦
         </button>
         <button
           className="cod-journal"
           onClick={() => nav(`/entry/new?type=reflection&card=${encodeURIComponent(card.name)}`)}
         >Journal this ✦</button>
       </div>
+      {popOpen && <CardPopup card={card} onClose={() => setPopOpen(false)} />}
     </div>
   );
 }
